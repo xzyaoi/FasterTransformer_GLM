@@ -12,18 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-add_subdirectory(bert)
-add_subdirectory(bert_int8)
-add_subdirectory(decoding)
-add_subdirectory(gpt)
-add_subdirectory(xlnet)
-add_subdirectory(swin)
-add_subdirectory(swin_int8)
-add_subdirectory(vit)
-add_subdirectory(vit_int8)
-
-if(BUILD_MULTI_GPU)
-    add_subdirectory(glm)
-    add_subdirectory(gptj)
-    add_subdirectory(multi_gpu_gpt)
-endif()
+add_library(th_glm SHARED GlmOp.cc)
+target_link_libraries(th_glm PRIVATE "${TORCH_LIBRARIES}" Glm th_utils pybind11::module)
+# pybind11_extension(th_glm SHARED GlmOp.cc)

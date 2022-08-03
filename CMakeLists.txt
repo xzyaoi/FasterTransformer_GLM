@@ -39,6 +39,7 @@ if(BUILD_MULTI_GPU)
   set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake/Modules)
   find_package(MPI REQUIRED)
   find_package(NCCL REQUIRED)
+  find_package(pybind11 REQUIRED)
   #if(${NCCL_VERSION} LESS 2.7)
   #  message(FATAL_ERROR "NCCL_VERSION ${NCCL_VERSION} is less than 2.7")
   #endif()
@@ -261,9 +262,12 @@ add_library(transformer-static STATIC
   $<TARGET_OBJECTS:BeamSearchLayer>
   $<TARGET_OBJECTS:DecoderCrossAttentionLayer>
   $<TARGET_OBJECTS:DecoderSelfAttentionLayer>
+  $<TARGET_OBJECTS:GlmDecoderSelfAttentionLayer>
   $<TARGET_OBJECTS:DynamicDecodeLayer>
   $<TARGET_OBJECTS:FfnLayer>
+  $<TARGET_OBJECTS:GluFfnLayer>
   $<TARGET_OBJECTS:FusedAttentionLayer>
+  $<TARGET_OBJECTS:GlmContextAttentionLayer>
   $<TARGET_OBJECTS:GptContextAttentionLayer>
   $<TARGET_OBJECTS:GptJ>
   $<TARGET_OBJECTS:GptJContextDecoder>
@@ -284,7 +288,9 @@ add_library(transformer-static STATIC
   $<TARGET_OBJECTS:T5TritonBackend>
   $<TARGET_OBJECTS:TensorParallelDecoderCrossAttentionLayer>
   $<TARGET_OBJECTS:TensorParallelDecoderSelfAttentionLayer>
+  $<TARGET_OBJECTS:TensorParallelGlmDecoderSelfAttentionLayer>
   $<TARGET_OBJECTS:TensorParallelGeluFfnLayer>
+  $<TARGET_OBJECTS:TensorParallelGeluGluFfnLayer>
   $<TARGET_OBJECTS:TensorParallelGptContextAttentionLayer>
   $<TARGET_OBJECTS:TensorParallelReluFfnLayer>
   $<TARGET_OBJECTS:TensorParallelUnfusedAttentionLayer>
@@ -336,9 +342,12 @@ add_library(transformer-shared SHARED
   $<TARGET_OBJECTS:BeamSearchLayer>
   $<TARGET_OBJECTS:DecoderCrossAttentionLayer>
   $<TARGET_OBJECTS:DecoderSelfAttentionLayer>
+  $<TARGET_OBJECTS:GlmDecoderSelfAttentionLayer>
   $<TARGET_OBJECTS:DynamicDecodeLayer>
   $<TARGET_OBJECTS:FfnLayer>
+  $<TARGET_OBJECTS:GluFfnLayer>
   $<TARGET_OBJECTS:FusedAttentionLayer>
+  $<TARGET_OBJECTS:GlmContextAttentionLayer>
   $<TARGET_OBJECTS:GptContextAttentionLayer>
   $<TARGET_OBJECTS:GptJ>
   $<TARGET_OBJECTS:GptJContextDecoder>
@@ -359,7 +368,9 @@ add_library(transformer-shared SHARED
   $<TARGET_OBJECTS:T5TritonBackend>
   $<TARGET_OBJECTS:TensorParallelDecoderCrossAttentionLayer>
   $<TARGET_OBJECTS:TensorParallelDecoderSelfAttentionLayer>
+  $<TARGET_OBJECTS:TensorParallelGlmDecoderSelfAttentionLayer>
   $<TARGET_OBJECTS:TensorParallelGeluFfnLayer>
+  $<TARGET_OBJECTS:TensorParallelGeluGluFfnLayer>
   $<TARGET_OBJECTS:TensorParallelGptContextAttentionLayer>
   $<TARGET_OBJECTS:TensorParallelReluFfnLayer>
   $<TARGET_OBJECTS:TensorParallelUnfusedAttentionLayer>
