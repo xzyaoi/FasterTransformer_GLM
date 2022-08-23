@@ -111,6 +111,35 @@ void invokeAddFusedQKVBiasTranspose(T* q_buf,
                                     cudaStream_t stream);
 
 template<typename T>
+void invokeGlmAddFusedQKVBiasTranspose(T* q_buf,
+                                    T* k_buf,
+                                    T* v_buf,
+                                    T* QKV,
+                                    const T* qkv_bias,
+                                    const int layer_id,
+                                    const int batch_size,
+                                    const int seq_len,
+                                    const int head_num,
+                                    const int size_per_head,
+                                    const int rotary_embedding_dim,
+                                    cudaStream_t stream);
+
+template<typename T>
+void invokeGlmAddFusedQKVBiasTranspose(T* q_buf,
+                                    T* k_buf,
+                                    T* v_buf,
+                                    T* QKV,
+                                    const T* qkv_bias,
+                                    const int layer_id,
+                                    const int batch_size,
+                                    const int seq_len,
+                                    const int step,
+                                    const int head_num,
+                                    const int size_per_head,
+                                    const int rotary_embedding_dim,
+                                    cudaStream_t stream);
+
+template<typename T>
 void invokeTranspose4d(T* dst,
                        T* src,
                        const int local_batch_size,

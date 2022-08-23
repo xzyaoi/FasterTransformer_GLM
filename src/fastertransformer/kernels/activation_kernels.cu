@@ -248,4 +248,59 @@ invokeAddBias(__nv_bfloat16* out, const __nv_bfloat16* bias, const int m, const 
 template void invokeAddBias(float* out, const __nv_bfloat16* bias, const int m, const int n, cudaStream_t stream);
 #endif
 
+template<typename H_T, typename B_T>
+__global__ void dot(H_T* out, const B_T* __restrict in, int m, int n)
+{
+    for (int id = blockIdx.x * blockDim.x + threadIdx.x; id < m * n; id += blockDim.x * gridDim.x) {
+        out[id] = out[id] * (H_T)ldg(&in[id]);
+    }
+}
+
+template<>
+__global__ void dot(half* out, const half* __restrict in, int m, int n)
+{
+    half2* out_ptr = (half2*)out;
+    const half2* in_ptr = (half2*)in;
+    for (int id = blockIdx.x * blockDim.x + threadIdx.x; id < m * n; id += blockDim.x * gridDim.x) {
+        out_ptr[id] = out_ptr[id] * __ldg(&in_ptr[id]);
+    }
+}
+
+#ifdef ENABLE_BF16
+template<>
+__global__ void dot(__nv_bfloat16* out, const __nv_bfloat16* __restrict in, int m, int n)
+{
+    __nv_bfloat162* out_ptr = (__nv_bfloat162*)out;
+    const __nv_bfloat162* in_ptr = (__nv_bfloat162*)in;
+    for (int id = blockIdx.x * blockDim.x + threadIdx.x; id < m * n; id += blockDim.x * gridDim.x) {
+        out_ptr[id] = bf16hmul2(out_ptr[id], ldg(&in_ptr[id]));
+    }
+}
+#endif
+
+template<typename H_T, typename B_T>
+void invokeDot(H_T* out, const B_T* in, const int m, const int n, cudaStream_t stream)
+{
+    const int data_type_factor = 4 / sizeof(H_T);  // 1 for fp32, 2 for fp16 and bf16
+    dim3 block, grid;
+    if (n / 4 / data_type_factor <= 1024) {
+        block.x = n / 4 / data_type_factor;
+        grid.x = m;
+    }
+    else {
+        block.x = 1024;
+        grid.x = ceil(m * n / 1024.);
+    }
+    dot<<<grid, block, 0, stream>>>(out, in, m, n / data_type_factor);
+}
+
+template void invokeDot(float* out, const float* in, const int m, const int n, cudaStream_t stream);
+template void invokeDot(half* out, const half* in, const int m, const int n, cudaStream_t stream);
+template void invokeDot(float* out, const half* in, const int m, const int n, cudaStream_t stream);
+#ifdef ENABLE_BF16
+template void
+invokeDot(__nv_bfloat16* out, const __nv_bfloat16* in, const int m, const int n, cudaStream_t stream);
+template void invokeDot(float* out, const __nv_bfloat16* in, const int m, const int n, cudaStream_t stream);
+#endif
+
 }  // namespace fastertransformer

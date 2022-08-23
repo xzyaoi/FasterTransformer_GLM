@@ -71,6 +71,11 @@ void invokeBuildDecoderAttentionMask(
     T* attention_mask, const int* sequence_lengths, const int batch_size, const int max_seq_len, cudaStream_t stream);
 
 template<typename T>
+void invokeBuildGlmDecoderAttentionMask(
+    T* attention_mask, const int* sequence_lengths, const int batch_size, const int max_seq_len, cudaStream_t stream);
+
+
+template<typename T>
 void invokeLookupHiddenStateOfLastToken(T* from_tensor,
                                         const T* hidden_state,
                                         const int* input_lengths,

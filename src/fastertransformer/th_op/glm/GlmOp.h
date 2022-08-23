@@ -80,23 +80,23 @@ public:
                          const unsigned long long int random_seed,
                          const int return_cum_log_probs = 0) = 0;
     virtual void encode(th::Tensor& input_ids,
-                         th::Tensor& input_lengths,
-                         th::Tensor& output_ids,
-                         th::Tensor& output_ids_buf,
-                         th::Tensor& logits_buf,
-                         th::Tensor& parent_ids,
-                         th::Tensor& sequence_lengths,
-                         th::Tensor& cum_log_probs,
-                         const size_t request_output_len,
-                         const size_t beam_width,
-                         const size_t top_k,
-                         const float top_p,
-                         const float beam_search_diversity_rate,
-                         const float temperature,
-                         const float len_penalty,
-                         const float repetition_penalty,
-                         const unsigned long long int random_seed,
-                         const int return_cum_log_probs = 0) = 0;
+                        th::Tensor& input_lengths,
+                        th::Tensor& output_ids_buf,
+                        th::Tensor& logits_buf,
+                        th::Tensor& output_ids,
+                        th::Tensor& parent_ids,
+                        th::Tensor& sequence_lengths,
+                        th::Tensor& cum_log_probs,
+                        const size_t request_output_len,
+                        const size_t beam_width,
+                        const size_t top_k,
+                        const float top_p,
+                        const float beam_search_diversity_rate,
+                        const float temperature,
+                        const float len_penalty,
+                        const float repetition_penalty,
+                        const unsigned long long int random_seed,
+                        const int return_cum_log_probs = 0) = 0;
     virtual void decode(const size_t step) = 0;
 };
 
@@ -631,19 +631,23 @@ public:
                                const int64_t return_cum_log_probs);
     
     std::vector<th::Tensor> encode(th::Tensor input_ids,
-                                               th::Tensor input_lengths,
-                                               th::Tensor output_ids_buf,
-                                               th::Tensor logits_buf,
-                                               const int64_t output_len,
-                                               const int64_t beam_width,
-                                               const int64_t top_k,
-                                               const double top_p,
-                                               const double beam_search_diversity_rate,
-                                               const double temperature,
-                                               const double len_penalty,
-                                               const double repetition_penalty,
-                                               const int64_t random_seed,
-                                               const int64_t return_cum_log_probs);
+                                    th::Tensor input_lengths,
+                                    th::Tensor output_ids_buf,
+                                    th::Tensor logits_buf,
+                                    th::Tensor output_ids,
+                                    th::Tensor parent_ids,
+                                    th::Tensor sequence_lengths,
+                                    th::Tensor cum_log_probs,
+                                    const int64_t output_len,
+                                    const int64_t beam_width,
+                                    const int64_t top_k,
+                                    const double top_p,
+                                    const double beam_search_diversity_rate,
+                                    const double temperature,
+                                    const double len_penalty,
+                                    const double repetition_penalty,
+                                    const int64_t random_seed,
+                                    const int64_t return_cum_log_probs);
     
     std::vector<th::Tensor> decode(const int64_t step);
 

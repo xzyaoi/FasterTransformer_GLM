@@ -31,4 +31,7 @@ void invokeAddBiasRelu(T* out, const T* bias, const int m, const int n, cudaStre
 template<typename F_T, typename B_T>
 void invokeAddBias(F_T* out, const B_T* bias, const int m, const int n, cudaStream_t stream);
 
+template<typename F_T, typename B_T>
+void invokeDot(F_T* out, const B_T* in, const int m, const int n, cudaStream_t stream);
+
 }  // namespace fastertransformer

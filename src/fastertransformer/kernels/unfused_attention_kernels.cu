@@ -1170,6 +1170,120 @@ __global__ void add_fusedQKV_bias_transpose_kernel(T* q_buf,
     *reinterpret_cast<Vec_t*>(&v_buf[dest_idx]) = v;
 }
 
+// the index impl in glm is different from origin
+template<typename T>
+__global__ void glm_alpha_add_fusedQKV_bias_transpose_kernel(T* q_buf,
+                                                            T* k_buf,
+                                                            T* v_buf,
+                                                            const T* __restrict QKV,
+                                                            const T* __restrict qkv_bias,
+                                                            const int layer_id,
+                                                            const int batch_size,
+                                                            const int seq_len,
+                                                            const int head_num,
+                                                            const int size_per_head,
+                                                            const int rotary_embedding_dim)
+{
+    using Vec_t = typename Vec_t<T>::Type;
+    const int batch_idx = blockIdx.z;
+    const int head_idx = blockIdx.y;
+    const int seq_idx = blockIdx.x;
+    const int tidx = threadIdx.x;
+    const int offset = size_per_head / 2;
+    if (tidx >= offset) {
+        return;
+    }
+
+    const int batch_time_idx = seq_len * batch_idx + seq_idx;
+    const int hidden_idx = head_idx * size_per_head + tidx;
+    const int n = head_num * size_per_head;
+
+    // src QKV: [batch, time, 3, head, hidden]
+    const int q_idx = batch_time_idx * 3 * n + hidden_idx;
+    const int k_idx = batch_time_idx * 3 * n + hidden_idx + n;
+    const int v_idx = batch_time_idx * 3 * n + hidden_idx + 2 * n;
+
+    // q_buf, k_buf, v_buf: [batch, head_num, seq_len, size_per_head]
+    const int dest_idx = size_per_head * seq_len * head_num * batch_idx + size_per_head * seq_len * head_idx
+                         + size_per_head * seq_idx + tidx;
+    
+    mmha::apply_glm_rotary_embedding((uint16_t&)QKV[q_idx],
+                                (uint16_t&)qkv_bias[hidden_idx],
+                                (uint16_t&)q_buf[dest_idx],
+                                (uint16_t&)QKV[q_idx+64],
+                                (uint16_t&)qkv_bias[hidden_idx+64],
+                                (uint16_t&)q_buf[dest_idx+64],
+                                (uint16_t&)QKV[k_idx],
+                                (uint16_t&)qkv_bias[hidden_idx+n],
+                                (uint16_t&)k_buf[dest_idx],
+                                (uint16_t&)QKV[k_idx+64],
+                                (uint16_t&)qkv_bias[hidden_idx+n+64],
+                                (uint16_t&)k_buf[dest_idx+64],
+                                rotary_embedding_dim,
+                                seq_idx,
+                                layer_id,
+                                tidx);
+
+    v_buf[dest_idx] = float(QKV[v_idx]) + float(qkv_bias[hidden_idx + 2 * n]), v_buf[dest_idx + offset] = float(QKV[v_idx+offset]) + float(qkv_bias[hidden_idx + 2 * n + offset]);
+}
+
+template<typename T>
+__global__ void glm_alpha_add_fusedQKV_bias_transpose_kernel(T* q_buf,
+                                                            T* k_buf,
+                                                            T* v_buf,
+                                                            const T* __restrict QKV,
+                                                            const T* __restrict qkv_bias,
+                                                            const int layer_id,
+                                                            const int batch_size,
+                                                            const int seq_len,
+                                                            const int step,
+                                                            const int head_num,
+                                                            const int size_per_head,
+                                                            const int rotary_embedding_dim)
+{
+    using Vec_t = typename Vec_t<T>::Type;
+    const int batch_idx = blockIdx.z;
+    const int head_idx = blockIdx.y;
+    const int seq_idx = blockIdx.x;
+    const int tidx = threadIdx.x;
+    const int offset = size_per_head / 2;
+    if (tidx >= offset) {
+        return;
+    }
+
+    const int batch_time_idx = seq_len * batch_idx + seq_idx;
+    const int hidden_idx = head_idx * size_per_head + tidx;
+    const int n = head_num * size_per_head;
+
+    // src QKV: [batch, time, 3, head, hidden]
+    const int q_idx = batch_time_idx * 3 * n + hidden_idx;
+    const int k_idx = batch_time_idx * 3 * n + hidden_idx + n;
+    const int v_idx = batch_time_idx * 3 * n + hidden_idx + 2 * n;
+
+    // q_buf, k_buf, v_buf: [batch, head_num, seq_len, size_per_head]
+    const int dest_idx = size_per_head * seq_len * head_num * batch_idx + size_per_head * seq_len * head_idx
+                         + size_per_head * seq_idx + tidx;
+    
+    mmha::apply_glm_rotary_embedding((uint16_t&)QKV[q_idx],
+                                (uint16_t&)qkv_bias[hidden_idx],
+                                (uint16_t&)q_buf[dest_idx],
+                                (uint16_t&)QKV[q_idx+64],
+                                (uint16_t&)qkv_bias[hidden_idx+64],
+                                (uint16_t&)q_buf[dest_idx+64],
+                                (uint16_t&)QKV[k_idx],
+                                (uint16_t&)qkv_bias[hidden_idx+n],
+                                (uint16_t&)k_buf[dest_idx],
+                                (uint16_t&)QKV[k_idx+64],
+                                (uint16_t&)qkv_bias[hidden_idx+n+64],
+                                (uint16_t&)k_buf[dest_idx+64],
+                                rotary_embedding_dim,
+                                step,
+                                layer_id,
+                                tidx);
+
+    v_buf[dest_idx] = float(QKV[v_idx]) + float(qkv_bias[hidden_idx + 2 * n]), v_buf[dest_idx + offset] = float(QKV[v_idx+offset]) + float(qkv_bias[hidden_idx + 2 * n + offset]);
+}
+
 template<typename T>
 void invokeAddFusedQKVBiasTranspose(T* q_buf,
                                     T* k_buf,
@@ -1200,29 +1314,126 @@ void invokeAddFusedQKVBiasTranspose(T* q_buf,
     }
 }
 
+template<typename T>
+void invokeGlmAddFusedQKVBiasTranspose(T* q_buf,
+                                        T* k_buf,
+                                        T* v_buf,
+                                        T* QKV,
+                                        const T* qkv_bias,
+                                        const int layer_id,
+                                        const int batch_size,
+                                        const int seq_len,
+                                        const int head_num,
+                                        const int size_per_head,
+                                        const int rotary_embedding_dim,
+                                        cudaStream_t stream)
+{
+    // To implement rotary embeddings, each thread processes two QKV elems:
+    dim3 block((size_per_head / 2 + 31) / 32 * 32);
+    dim3 grid(seq_len, head_num, batch_size);
+    glm_alpha_add_fusedQKV_bias_transpose_kernel<<<grid, block, 0, stream>>>(
+            q_buf, k_buf, v_buf, QKV, qkv_bias, layer_id, batch_size, seq_len, head_num, size_per_head, -rotary_embedding_dim);
+}
+
+template<typename T>
+void invokeGlmAddFusedQKVBiasTranspose(T* q_buf,
+                                        T* k_buf,
+                                        T* v_buf,
+                                        T* QKV,
+                                        const T* qkv_bias,
+                                        const int layer_id,
+                                        const int batch_size,
+                                        const int seq_len,
+                                        const int step,
+                                        const int head_num,
+                                        const int size_per_head,
+                                        const int rotary_embedding_dim,
+                                        cudaStream_t stream)
+{
+    // To implement rotary embeddings, each thread processes two QKV elems:
+    dim3 block((size_per_head / 2 + 31) / 32 * 32);
+    dim3 grid(seq_len, head_num, batch_size);
+    glm_alpha_add_fusedQKV_bias_transpose_kernel<<<grid, block, 0, stream>>>(
+            q_buf, k_buf, v_buf, QKV, qkv_bias, layer_id, batch_size, seq_len, step, head_num, size_per_head, -rotary_embedding_dim);
+}
+
 template void invokeAddFusedQKVBiasTranspose(float* q_buf,
-                                             float* k_buf,
-                                             float* v_buf,
-                                             float* QKV,
-                                             const float* qkv_bias,
-                                             const int batch_size,
-                                             const int seq_len,
-                                             const int head_num,
-                                             const int size_per_head,
-                                             const int rotary_embedding_dim,
-                                             cudaStream_t stream);
+                                                float* k_buf,
+                                                float* v_buf,
+                                                float* QKV,
+                                                const float* qkv_bias,
+                                                const int batch_size,
+                                                const int seq_len,
+                                                const int head_num,
+                                                const int size_per_head,
+                                                const int rotary_embedding_dim,
+                                                cudaStream_t stream);
 
 template void invokeAddFusedQKVBiasTranspose(half* q_buf,
-                                             half* k_buf,
-                                             half* v_buf,
-                                             half* QKV,
-                                             const half* qkv_bias,
-                                             const int batch_size,
-                                             const int seq_len,
-                                             const int head_num,
-                                             const int size_per_head,
-                                             const int rotary_embedding_dim,
-                                             cudaStream_t stream);
+                                                half* k_buf,
+                                                half* v_buf,
+                                                half* QKV,
+                                                const half* qkv_bias,
+                                                const int batch_size,
+                                                const int seq_len,
+                                                const int head_num,
+                                                const int size_per_head,
+                                                const int rotary_embedding_dim,
+                                                cudaStream_t stream);
+
+template void invokeGlmAddFusedQKVBiasTranspose(float* q_buf,
+                                                float* k_buf,
+                                                float* v_buf,
+                                                float* QKV,
+                                                const float* qkv_bias,
+                                                const int layer_id,
+                                                const int batch_size,
+                                                const int seq_len,
+                                                const int head_num,
+                                                const int size_per_head,
+                                                const int rotary_embedding_dim,
+                                                cudaStream_t stream);
+
+template void invokeGlmAddFusedQKVBiasTranspose(half* q_buf,
+                                                half* k_buf,
+                                                half* v_buf,
+                                                half* QKV,
+                                                const half* qkv_bias,
+                                                const int layer_id,
+                                                const int batch_size,
+                                                const int seq_len,
+                                                const int head_num,
+                                                const int size_per_head,
+                                                const int rotary_embedding_dim,
+                                                cudaStream_t stream);
+
+template void invokeGlmAddFusedQKVBiasTranspose(float* q_buf,
+                                                float* k_buf,
+                                                float* v_buf,
+                                                float* QKV,
+                                                const float* qkv_bias,
+                                                const int layer_id,
+                                                const int batch_size,
+                                                const int seq_len,
+                                                const int step,
+                                                const int head_num,
+                                                const int size_per_head,
+                                                const int rotary_embedding_dim,
+                                                cudaStream_t stream);
+
+template void invokeGlmAddFusedQKVBiasTranspose(half* q_buf,
+                                                half* k_buf,
+                                                half* v_buf,
+                                                half* QKV,
+                                                const half* qkv_bias,
+                                                const int layer_id,
+                                                const int batch_size,
+                                                const int seq_len,
+                                                const int step,
+                                                const int head_num,
+                                                const int size_per_head,
+                                                const int rotary_embedding_dim,
+                                                cudaStream_t stream);
 
 #ifdef ENABLE_BF16
 template void invokeAddFusedQKVBiasTranspose(__nv_bfloat16* q_buf,
@@ -1236,6 +1447,33 @@ template void invokeAddFusedQKVBiasTranspose(__nv_bfloat16* q_buf,
                                              const int size_per_head,
                                              const int rotary_embedding_dim,
                                              cudaStream_t stream);
+
+template void invokeGlmAddFusedQKVBiasTranspose(__nv_bfloat16* q_buf,
+                                                __nv_bfloat16* k_buf,
+                                                __nv_bfloat16* v_buf,
+                                                __nv_bfloat16* QKV,
+                                                const __nv_bfloat16* qkv_bias,
+                                                const int layer_id,
+                                                const int batch_size,
+                                                const int seq_len,
+                                                const int head_num,
+                                                const int size_per_head,
+                                                const int rotary_embedding_dim,
+                                                cudaStream_t stream);
+
+template void invokeGlmAddFusedQKVBiasTranspose(__nv_bfloat16* q_buf,
+                                                __nv_bfloat16* k_buf,
+                                                __nv_bfloat16* v_buf,
+                                                __nv_bfloat16* QKV,
+                                                const __nv_bfloat16* qkv_bias,
+                                                const int layer_id,
+                                                const int batch_size,
+                                                const int seq_len,
+                                                const int step,
+                                                const int head_num,
+                                                const int size_per_head,
+                                                const int rotary_embedding_dim,
+                                                cudaStream_t stream);
 #endif
 
 template<typename T>

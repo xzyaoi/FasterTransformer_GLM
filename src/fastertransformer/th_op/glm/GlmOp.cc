@@ -153,6 +153,10 @@ std::vector<th::Tensor> GlmOp::encode(th::Tensor input_ids,
                                                th::Tensor input_lengths,
                                                th::Tensor output_ids_buf,
                                                th::Tensor logits_buf,
+                                               th::Tensor output_ids,
+                                               th::Tensor parent_ids,
+                                               th::Tensor sequence_lengths,
+                                               th::Tensor cum_log_probs,
                                                const int64_t output_len,
                                                const int64_t beam_width,
                                                const int64_t top_k,
@@ -176,17 +180,6 @@ std::vector<th::Tensor> GlmOp::encode(th::Tensor input_ids,
                 " 1 (the cumulative log probs of generated sequences), or"
                 " 2 (the cumulative log probs of sequences).")
 
-    const int batch_size = input_ids.size(0);
-    const int max_input_length = input_ids.size(1);
-    const int total_request_output_len = max_input_length + output_len;
-    th::Tensor output_ids = torch::empty({batch_size, beam_width, total_request_output_len},
-                                         torch::dtype(torch::kInt32).device(torch::kCUDA).requires_grad(false));
-    th::Tensor parent_ids = torch::empty({total_request_output_len, batch_size, beam_width},
-                                         torch::dtype(torch::kInt32).device(torch::kCUDA).requires_grad(false));
-    th::Tensor sequence_lengths =
-        torch::empty({batch_size, beam_width}, torch::dtype(torch::kInt32).device(torch::kCUDA).requires_grad(false));
-    th::Tensor cum_log_probs =
-        torch::empty({batch_size, beam_width}, torch::dtype(torch::kFloat32).device(torch::kCUDA).requires_grad(false));
 
     ftglm->encode(input_ids,
                    input_lengths,
@@ -206,17 +199,14 @@ std::vector<th::Tensor> GlmOp::encode(th::Tensor input_ids,
                    (const float)repetition_penalty,
                    (const unsigned long long int)random_seed,
                    return_cum_log_probs);
-    // ftglm->decode(6);
-    if (return_cum_log_probs > 0) {
-        return std::vector<th::Tensor>{output_ids, sequence_lengths, cum_log_probs};
-    }
-    return std::vector<th::Tensor>{output_ids, sequence_lengths};
+
+    return std::vector<th::Tensor>{};
 }
 
 std::vector<th::Tensor> GlmOp::decode(const int64_t step)
 {
     ftglm->decode(step);
-    return {};
+    return std::vector<th::Tensor>{};
 }
 
 

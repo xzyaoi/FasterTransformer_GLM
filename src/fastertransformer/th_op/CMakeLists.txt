@@ -29,6 +29,7 @@ add_subdirectory(swin)
 add_subdirectory(vit)
 
 if(BUILD_MULTI_GPU)
+    add_subdirectory(glm)
     add_subdirectory(multi_gpu_gpt)
     add_subdirectory(t5)
 endif()

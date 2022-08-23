@@ -40,6 +40,16 @@ set_property(TARGET TensorParallelReluFfnLayer PROPERTY POSITION_INDEPENDENT_COD
 set_property(TARGET TensorParallelReluFfnLayer PROPERTY CUDA_RESOLVE_DEVICE_SYMBOLS  ON)
 target_link_libraries(TensorParallelReluFfnLayer PUBLIC -lcudart FfnLayer nccl_utils)
 
+add_library(GluFfnLayer STATIC GluFfnLayer.cc)
+set_property(TARGET GluFfnLayer PROPERTY POSITION_INDEPENDENT_CODE  ON)
+set_property(TARGET GluFfnLayer PROPERTY CUDA_RESOLVE_DEVICE_SYMBOLS  ON)
+target_link_libraries(GluFfnLayer PUBLIC -lcublas -lcudart cublasMMWrapper activation_kernels memory_utils matrix_vector_multiplication)
+
+add_library(TensorParallelGeluGluFfnLayer STATIC TensorParallelGeluGluFfnLayer.cc)
+set_property(TARGET TensorParallelGeluGluFfnLayer PROPERTY POSITION_INDEPENDENT_CODE  ON)
+set_property(TARGET TensorParallelGeluGluFfnLayer PROPERTY CUDA_RESOLVE_DEVICE_SYMBOLS  ON)
+target_link_libraries(TensorParallelGeluGluFfnLayer PUBLIC -lcudart GluFfnLayer nccl_utils)
+
 add_library(DynamicDecodeLayer STATIC DynamicDecodeLayer.cc)
 set_property(TARGET DynamicDecodeLayer PROPERTY POSITION_INDEPENDENT_CODE  ON)
 set_property(TARGET DynamicDecodeLayer PROPERTY CUDA_RESOLVE_DEVICE_SYMBOLS  ON)

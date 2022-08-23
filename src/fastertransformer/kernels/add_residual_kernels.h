@@ -28,6 +28,9 @@ template<typename T>
 void invokeAddBiasResidual(T* output, const T* input, const T* bias, const int m, const int n, cudaStream_t stream);
 
 template<typename T>
+void invokeAlphaAddBiasResidual(T* output, const T* input, const T* bias, const T alpha, const int m, const int n, cudaStream_t stream);
+
+template<typename T>
 void invokeT5AddResidual(T* output, const T* input, const int m, const int n, cudaStream_t stream);
 
 template<typename T>

@@ -1380,4 +1380,32 @@ inline __device__ void apply_rotary_embedding(bf16_8_t& q, bf16_8_t& k, int tid,
 }
 #endif  // ENABLE_BF16
 
+inline __device__ void
+apply_glm_rotary_embedding(uint16_t& q1,
+                        uint16_t& q1_bias,
+                        uint16_t& q1_dst,
+                        uint16_t& q2,
+                        uint16_t& q2_bias,
+                        uint16_t& q2_dst,
+                        uint16_t& k1,
+                        uint16_t& k1_bias,
+                        uint16_t& k1_dst,
+                        uint16_t& k2,
+                        uint16_t& k2_bias,
+                        uint16_t& k2_dst,
+                        const int rot_embed_dim,
+                        const int step,
+                        const int layer_id,
+                        const int tidx)
+{
+    const float inv_freq = step / pow(10000.0f, tidx / (float)rot_embed_dim);
+    const float cosf = cos(inv_freq), sinf = sin(inv_freq);
+    const float alpha = 1.0f / (sqrt(128) * (layer_id+1.0f));
+    float _q[2], _k[2];
+    _q[0] = half_to_float(q1) + half_to_float(q1_bias),            _q[1] = half_to_float(q2) + half_to_float(q2_bias);
+    _k[0] = half_to_float(k1) + half_to_float(k1_bias),            _k[1] = half_to_float(k2) + half_to_float(k2_bias);
+    q1_dst = float_to_half((cosf * _q[0] - sinf * _q[1]) * alpha),      q2_dst = float_to_half((cosf * _q[1] + sinf * _q[0]) * alpha);
+    k1_dst = float_to_half(cosf * _k[0] - sinf * _k[1]),                k2_dst = float_to_half(cosf * _k[1] + sinf * _k[0]);
+}
+
 }  // namespace mmha

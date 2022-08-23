@@ -362,6 +362,50 @@ template void invokeBuildDecoderAttentionMask(__nv_bfloat16* attention_mask,
 #endif
 
 template<typename T>
+__global__ void buildGlmDecoderAttentionMaskKernel(T* attention_mask, const int* sequence_lengths, const int max_seq_len)
+{
+    // sequence_lengths: [batch_size]
+    // attention_mask: [batch_size, 1, max_seq_len, max_seq_len]
+    attention_mask += blockIdx.x * max_seq_len * max_seq_len;
+    const int length = sequence_lengths[blockIdx.x];
+    for (int i = threadIdx.x; i < max_seq_len * max_seq_len; i += blockDim.x) {
+        int row_id = i / max_seq_len;
+        int col_id = i % max_seq_len;
+        if (row_id < length - 1 && col_id == length - 1) {
+            attention_mask[i] = (T)(0.0f);
+        }
+        else {
+            attention_mask[i] = (T)(1.0f);
+        }
+    }
+}
+
+template<typename T>
+void invokeBuildGlmDecoderAttentionMask(
+    T* attention_mask, const int* sequence_lengths, const int batch_size, const int max_seq_len, cudaStream_t stream)
+{
+    buildGlmDecoderAttentionMaskKernel<<<batch_size, 256, 0, stream>>>(attention_mask, sequence_lengths, max_seq_len);
+}
+
+template void invokeBuildGlmDecoderAttentionMask(float* attention_mask,
+                                              const int* sequence_lengths,
+                                              const int batch_size,
+                                              const int max_seq_len,
+                                              cudaStream_t stream);
+template void invokeBuildGlmDecoderAttentionMask(half* attention_mask,
+                                              const int* sequence_lengths,
+                                              const int batch_size,
+                                              const int max_seq_len,
+                                              cudaStream_t stream);
+#ifdef ENABLE_BF16
+template void invokeBuildGlmDecoderAttentionMask(__nv_bfloat16* attention_mask,
+                                              const int* sequence_lengths,
+                                              const int batch_size,
+                                              const int max_seq_len,
+                                              cudaStream_t stream);
+#endif
+
+template<typename T>
 __launch_bounds__(1024, 1) __global__ void lookupHiddenStateOfLastToken(T* from_tensor,
                                                                         const T* hidden_state,
                                                                         const int* input_lengths,

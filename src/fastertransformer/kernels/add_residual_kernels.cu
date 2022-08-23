@@ -39,6 +39,26 @@ void invokeAddBiasResidual(T* output, const T* input, const T* bias, const int m
 }
 
 template<typename T>
+__global__ void alphaAddBiasResidual(T* output, const T* input, const T* bias, const T alpha, const int m, const int n)
+{
+    const int col_index = blockIdx.y * blockDim.x + threadIdx.x;
+    if (col_index < n) {
+        T bias_val = (bias == nullptr) ? (T)(0.0f) : bias[col_index];
+        output[blockIdx.x * n + col_index] =
+            output[blockIdx.x * n + col_index] + input[blockIdx.x * n + col_index] * alpha + bias_val;
+    }
+}
+
+template<typename T>
+void invokeAlphaAddBiasResidual(T* output, const T* input, const T* bias, const T alpha, const int m, const int n, cudaStream_t stream)
+{
+    int blocks_per_row = ceil(float(n) / 1024);
+    dim3 grid(m, blocks_per_row);
+    dim3 block(min(n, 1024));
+    alphaAddBiasResidual<<<grid, block, 0, stream>>>(output, input, bias, alpha, m, n);
+}
+
+template<typename T>
 __global__ void addBiasAttentionFfnResidual(T* block_output,
                                             const T* ffn_output,
                                             const T* attn_output,
@@ -94,7 +114,22 @@ template void invokeAddBiasResidual(
 template void
 invokeAddBiasResidual(half* output, const half* input, const half* bias, const int m, const int n, cudaStream_t stream);
 
+template void invokeAlphaAddBiasResidual(
+    float* output, const float* input, const float* bias, const float alpha, const int m, const int n, cudaStream_t stream);
+
+template void
+invokeAlphaAddBiasResidual(half* output, const half* input, const half* bias, const half alpha, const int m, const int n, cudaStream_t stream);
+
+
 #ifdef ENABLE_BF16
+template void invokeAlphaAddBiasResidual(__nv_bfloat16* output,
+                                    const __nv_bfloat16* input,
+                                    const __nv_bfloat16* bias,
+                                    const __nv_bfloat16 alpha,
+                                    const int m,
+                                    const int n,
+                                    cudaStream_t stream);
+
 template void invokeAddBiasResidual(__nv_bfloat16* output,
                                     const __nv_bfloat16* input,
                                     const __nv_bfloat16* bias,
