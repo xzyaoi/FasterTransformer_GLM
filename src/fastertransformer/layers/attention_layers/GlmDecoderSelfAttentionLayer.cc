@@ -170,6 +170,8 @@ void GlmDecoderSelfAttentionLayer<T>::allocateBuffer()
             reinterpret_cast<T*>(allocator_->malloc(sizeof(T) * max_batch_size_ * local_hidden_units_, false));
         context_buf_ =
             reinterpret_cast<T*>(allocator_->malloc(sizeof(T) * max_batch_size_ * local_hidden_units_, false));
+        // weights_buf_ =
+        //     reinterpret_cast<T*>(allocator_->malloc(sizeof(T) * d_model_ * 3 * local_hidden_units_, false));
         is_allocate_buffer_ = true;
     }
 }
@@ -188,7 +190,8 @@ void GlmDecoderSelfAttentionLayer<T>::allocateBuffer(size_t batch_size)
         reinterpret_cast<T*>(allocator_->reMalloc(v_buf_, sizeof(T) * batch_size * local_hidden_units_, false));
     context_buf_ =
         reinterpret_cast<T*>(allocator_->reMalloc(context_buf_, sizeof(T) * batch_size * local_hidden_units_, false));
-    // printf("%d\n",batch_size * local_hidden_units_);
+    // weights_buf_ =
+    //         reinterpret_cast<T*>(allocator_->reMalloc(weights_buf_, sizeof(T) * d_model_ * 3 * local_hidden_units_, false));
     is_allocate_buffer_ = true;
 }
 
@@ -201,6 +204,7 @@ void GlmDecoderSelfAttentionLayer<T>::freeBuffer()
         allocator_->free(k_buf_);
         allocator_->free(v_buf_);
         allocator_->free(context_buf_);
+        // allocator_->free(weights_buf_);
         is_allocate_buffer_ = false;
     }
 }
@@ -489,7 +493,8 @@ void GlmDecoderSelfAttentionLayer<T>::forward(std::vector<fastertransformer::Ten
                 FT_LOG_WARNING(
                     "[GlmDecoderSelfAttentionLayer<T>::forward] int8 glm doesn't support m > 2, run fp glm instead.\n");
             }
-            cublas_wrapper_->Gemm(CUBLAS_OP_N,
+            if(attention_weights->query_weight.kernel) {
+                cublas_wrapper_->Gemm(CUBLAS_OP_N,
                                   CUBLAS_OP_N,
                                   3 * local_hidden_units_,  // n
                                   batch_size,
@@ -500,6 +505,17 @@ void GlmDecoderSelfAttentionLayer<T>::forward(std::vector<fastertransformer::Ten
                                   d_model_,  // k
                                   qkv_buf_,
                                   3 * local_hidden_units_ /* n */);
+            } else {
+                int4WeightPerChannelLdkMultiplicationLauncher(attention_weights->query_weight.int8_kernel,
+                                                          attention_input,
+                                                          attention_weights->query_weight.scale,
+                                                          qkv_buf_,
+                                                          batch_size,
+                                                          3 * local_hidden_units_,
+                                                          d_model_ / 2,
+                                                          stream_);
+            }
+            
         }
 #ifdef SPARSITY_ENABLED
     }
@@ -577,7 +593,8 @@ void GlmDecoderSelfAttentionLayer<T>::forward(std::vector<fastertransformer::Ten
                 FT_LOG_WARNING(
                     "[GlmDecoderSelfAttentionLayer<T>::forward] int8 glm doesn't support m > 2, run fp glm instead.\n");
             }
-            cublas_wrapper_->Gemm(CUBLAS_OP_N,
+            if(attention_weights->attention_output_weight.kernel) {
+                cublas_wrapper_->Gemm(CUBLAS_OP_N,
                                   CUBLAS_OP_N,
                                   d_model_,  // n
                                   batch_size,
@@ -588,6 +605,17 @@ void GlmDecoderSelfAttentionLayer<T>::forward(std::vector<fastertransformer::Ten
                                   local_hidden_units_,  // k
                                   attention_out,
                                   d_model_ /* n */);
+            } else {
+                int4WeightPerChannelLdkMultiplicationLauncher(attention_weights->attention_output_weight.int8_kernel,
+                                                          context_buf_,
+                                                          attention_weights->attention_output_weight.scale,
+                                                          attention_out,
+                                                          batch_size,
+                                                          d_model_,
+                                                          local_hidden_units_ / 2,
+                                                          stream_);
+            }
+            
         }
         sync_check_cuda_error();
 #ifdef SPARSITY_ENABLED

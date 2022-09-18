@@ -74,7 +74,8 @@ void GluFfnLayer<T>::forward(std::vector<fastertransformer::Tensor>* output_tens
                 if (int8_mode_ == 1) {
                     printf("[WARNING][GluFfnLayer<T>::forward] int8 gpt doesn't support m > 2, run fp gpt instead.\n");
                 }
-                cublas_wrapper_->Gemm(CUBLAS_OP_N,
+                if (glu_ffn_weights->intermediate_weight[inter_buf_id].kernel) {
+                    cublas_wrapper_->Gemm(CUBLAS_OP_N,
                                     CUBLAS_OP_N,
                                     inter_size_,
                                     m,
@@ -85,6 +86,38 @@ void GluFfnLayer<T>::forward(std::vector<fastertransformer::Tensor>* output_tens
                                     hidden_units_,
                                     inter_buf_[inter_buf_id],
                                     inter_size_);
+                } else if(m > 2) {
+                    FT_CHECK(glu_ffn_weights->intermediate_weight[inter_buf_id].int8_kernel != NULL
+                            && glu_ffn_weights->intermediate_weight[inter_buf_id].scale != NULL);
+                    invokeInt4WeightExtraction(glu_ffn_weights->intermediate_weight[inter_buf_id].int8_kernel,
+                                                glu_ffn_weights->intermediate_weight[inter_buf_id].scale,
+                                                weights_buf_,
+                                                inter_size_,
+                                                hidden_units_ / 2,
+                                                stream_);
+                    sync_check_cuda_error();
+                    cublas_wrapper_->Gemm(CUBLAS_OP_N,
+                                    CUBLAS_OP_N,
+                                    inter_size_,
+                                    m,
+                                    hidden_units_,
+                                    weights_buf_,
+                                    inter_size_,
+                                    input_tensor,
+                                    hidden_units_,
+                                    inter_buf_[inter_buf_id],
+                                    inter_size_);
+                } else {
+                    int4WeightPerChannelLdkMultiplicationLauncher(glu_ffn_weights->intermediate_weight[inter_buf_id].int8_kernel,
+                                                            input_tensor,
+                                                            glu_ffn_weights->intermediate_weight[inter_buf_id].scale,
+                                                            inter_buf_[inter_buf_id],
+                                                            m,
+                                                            inter_size_,
+                                                            hidden_units_ / 2,
+                                                            stream_);
+                }
+                
             }
 #ifdef SPARSITY_ENABLED
         }
@@ -119,7 +152,8 @@ void GluFfnLayer<T>::forward(std::vector<fastertransformer::Tensor>* output_tens
                                                           stream_);
         }
         else {
-            cublas_wrapper_->Gemm(CUBLAS_OP_N,
+            if(glu_ffn_weights->output_weight.kernel) {
+                cublas_wrapper_->Gemm(CUBLAS_OP_N,
                                   CUBLAS_OP_N,
                                   hidden_units_,
                                   m,
@@ -130,6 +164,29 @@ void GluFfnLayer<T>::forward(std::vector<fastertransformer::Tensor>* output_tens
                                   inter_size_,
                                   output_tensor,
                                   hidden_units_);
+            } else {
+                FT_CHECK(glu_ffn_weights->output_weight.int8_kernel != NULL
+                            && glu_ffn_weights->output_weight.scale != NULL);
+                    invokeInt4WeightExtraction(glu_ffn_weights->output_weight.int8_kernel,
+                                                glu_ffn_weights->output_weight.scale,
+                                                weights_buf_,
+                                                hidden_units_,
+                                                inter_size_ / 2,
+                                                stream_);
+                    sync_check_cuda_error();
+                    cublas_wrapper_->Gemm(CUBLAS_OP_N,
+                                  CUBLAS_OP_N,
+                                  hidden_units_,
+                                  m,
+                                  inter_size_,
+                                  weights_buf_,
+                                  hidden_units_,
+                                  inter_buf_[0],
+                                  inter_size_,
+                                  output_tensor,
+                                  hidden_units_);
+            }
+            
         }
 #ifdef SPARSITY_ENABLED
     }
@@ -197,6 +254,7 @@ void GluFfnLayer<T>::allocateBuffer()
     if (is_allocate_buffer_ == false) {
         inter_buf_[0] = (T*)allocator_->malloc(sizeof(T) * max_token_num_ * inter_size_, false);
         inter_buf_[1] = (T*)allocator_->malloc(sizeof(T) * max_token_num_ * inter_size_, false);
+        weights_buf_ = (T*)allocator_->malloc(sizeof(T) * hidden_units_ * inter_size_, false);
         is_allocate_buffer_ = true;
     }
 }
@@ -207,6 +265,7 @@ void GluFfnLayer<T>::allocateBuffer(size_t token_num)
     FT_LOG_DEBUG(__PRETTY_FUNCTION__);
     inter_buf_[0] = (T*)allocator_->reMalloc(inter_buf_[0], sizeof(T) * token_num * inter_size_, false);
     inter_buf_[1] = (T*)allocator_->reMalloc(inter_buf_[1], sizeof(T) * token_num * inter_size_, false);
+    weights_buf_ = (T*)allocator_->reMalloc(weights_buf_, sizeof(T) * hidden_units_ * inter_size_, false);
     is_allocate_buffer_ = true;
 }
 
@@ -217,6 +276,7 @@ void GluFfnLayer<T>::freeBuffer()
     if (is_allocate_buffer_) {
         allocator_->free(inter_buf_[0]);
         allocator_->free(inter_buf_[1]);
+        allocator_->free(weights_buf_);
         is_allocate_buffer_ = false;
     }
 }

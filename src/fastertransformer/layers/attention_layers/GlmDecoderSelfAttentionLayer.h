@@ -55,6 +55,7 @@ protected:
     T* k_buf_ = nullptr;
     T* v_buf_ = nullptr;
     T* context_buf_ = nullptr;
+    T* weights_buf_ = nullptr;
     using BaseAttentionLayer<T>::stream_;
     using BaseAttentionLayer<T>::sparse_;
 

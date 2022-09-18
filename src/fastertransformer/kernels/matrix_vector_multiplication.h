@@ -32,4 +32,22 @@ void int8WeightPerChannelLdkMultiplicationLauncher(const int8_t* weight,
                                                    const int k,
                                                    cudaStream_t stream);
 
+
+template<typename T>
+void int4WeightPerChannelLdkMultiplicationLauncher(const int8_t* weight,
+                                                   const T* input,
+                                                   const float* scale_list,
+                                                   T* output,
+                                                   const int m,
+                                                   const int n,
+                                                   const int k,
+                                                   cudaStream_t stream);
+
+template<typename T>
+void invokeInt4WeightExtraction(const int8_t* weight,
+                                const float* scale_list,
+                                T* output,
+                                const int n,
+                                const int k,
+                                cudaStream_t stream);
 }  // namespace fastertransformer

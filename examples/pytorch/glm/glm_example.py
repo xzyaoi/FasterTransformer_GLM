@@ -162,8 +162,9 @@ def main():
             raw_text += ' ' + generation_mask
         if not raw_text.endswith('MASK]'):
             seq = seq + [tokenizer.get_command('eos')]
+        seq = seq * 10
+        seq = seq[:2000]
         seq = seq + [tokenizer.get_command('sop')]
-        # seq = seq[:1024]
         if args.local_rank == 0:
             print('raw text: {}\n'.format(raw_text))
             print(seq)
@@ -200,52 +201,57 @@ def main():
     glm = Glm(head_num, size_per_head, vocab_size, rotary_embedding_dim, start_id, end_id,
                       layer_num, max_seq_len, tensor_para_size, pipeline_para_size,
                       lib_path=args.lib_path, world_size=args.world_size, rank=args.local_rank)
-    if not glm.load(ckpt_path=args.ckpt_path):
-        print("[WARNING] Checkpoint file not found. Model loading is skipped.")
+    # if not glm.load(ckpt_path=args.ckpt_path):
+    #     print("[WARNING] Checkpoint file not found. Model loading is skipped.")
     if args.data_type == 'fp16':
         glm.half()
         
     with torch.no_grad():
         # Generate tokens.
-        tokens_batch = glm(start_ids,
-                        start_lengths,
-                        output_len,
-                        beam_width,
-                        top_k,
-                        top_p,
-                        beam_search_diversity_rate,
-                        temperature,
-                        len_penalty,
-                        repetition_penalty,
-                        random_seed,
-                        return_output_length,
-                        return_cum_log_probs)
+        glm(start_ids,
+            start_lengths,
+            output_len,
+            beam_width,
+            top_k,
+            top_p,
+            beam_search_diversity_rate,
+            temperature,
+            len_penalty,
+            repetition_penalty,
+            random_seed,
+            return_output_length,
+            return_cum_log_probs)
+    # if not glm.load(ckpt_path=args.ckpt_path):
+    #     print("[WARNING] Checkpoint file not found. Model loading is skipped.")
         # # only a thread (rank 0) gets the output, while the others are supposed to return None.
-        if tokens_batch is not None:
+        # if tokens_batch is not None:
 
-            if return_cum_log_probs > 0:
-                tokens_batch, _, cum_log_probs = tokens_batch
-                print('[INFO] Log probs of sentences:', cum_log_probs)
-            outputs = []
-            tokens_batch = tokens_batch.cpu().numpy()
-            for i, (context, tokens) in enumerate(zip(contexts, tokens_batch)):
-                for beam_id in range(beam_width):
-                    token = tokens[beam_id][start_lengths[i]:]  # exclude context input from the output
-                    # output = enc.decode(token)
-                    output = token
-                    outputs.append(output)
-                    if args.local_rank == 0:
-                        print(f"[INFO] batch {i}, beam {beam_id}: \n[Context]\n{context}\n\n[Output]\n")
-                        for k in output:
-                            if k:
-                                print(tokenizer.IdToToken(int(k)),end=" ")
-                        print()
+        #     if return_cum_log_probs > 0:
+        #         tokens_batch, _, cum_log_probs = tokens_batch
+        #         print('[INFO] Log probs of sentences:', cum_log_probs)
+        #     outputs = []
+        #     tokens_batch = tokens_batch.cpu().numpy()
+        #     for i, (context, tokens) in enumerate(zip(contexts, tokens_batch)):
+        #         for beam_id in range(beam_width):
+        #             token = tokens[beam_id][start_lengths[i]:]  # exclude context input from the output
+        #             # output = enc.decode(token)
+        #             output = token
+        #             outputs.append(output)
+        #             if args.local_rank == 0:
+        #                 print(f"[INFO] batch {i}, beam {beam_id}: \n[Context]\n{context}\n\n[Output]\n")
+        #                 for k in output:
+        #                     if k:
+        #                         print(tokenizer.IdToToken(int(k)),end=" ")
+        #                 print()
  
         if args.time:
             iterations = 3
             time = timeit.default_timer()
             for i in range(iterations):
-                tokens_batch = glm(start_ids,
+                # torch.cuda.empty_cache()
+                # if args.local_rank == 0:
+                #     print(i,torch.cuda.memory_allocated() / 1024 / 1024)
+                glm(start_ids,
                                 start_lengths,
                                 output_len,
                                 beam_width,

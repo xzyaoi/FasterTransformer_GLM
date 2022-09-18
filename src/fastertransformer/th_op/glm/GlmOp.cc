@@ -20,18 +20,20 @@ namespace th = torch;
 namespace torch_ext {
 
 GlmOp::GlmOp(const c10d::ProcessGroupNCCL& p,
-                             const int64_t rank,
-                             const int64_t head_num,
-                             const int64_t size_per_head,
-                             const int64_t inter_size,
-                             const int64_t layer_num,
-                             const int64_t vocab_size,
-                             const int64_t rotary_embedding_dim,
-                             const int64_t start_id,
-                             const int64_t end_id,
-                             const int64_t tensor_para_size,
-                             const int64_t pipeline_para_size,
-                             const std::vector<th::Tensor> weights):
+             const int64_t rank,
+             const int64_t head_num,
+             const int64_t size_per_head,
+             const int64_t inter_size,
+             const int64_t layer_num,
+             const int64_t vocab_size,
+             const int64_t rotary_embedding_dim,
+             const int64_t start_id,
+             const int64_t end_id,
+             const int64_t tensor_para_size,
+             const int64_t pipeline_para_size,
+             const std::vector<th::Tensor> weights,
+             const vector<th::Tensor> int8_weights,
+             const vector<th::Tensor> int8_scales):
     vocab_size_(vocab_size), st_(weights[0].scalar_type())
 {
     const c10d::ProcessGroupNCCL* p_ = &p;
@@ -56,7 +58,9 @@ GlmOp::GlmOp(const c10d::ProcessGroupNCCL& p,
                                      end_id,
                                      tensor_para_size,
                                      pipeline_para_size,
-                                     weights);
+                                     weights,
+                                     int8_weights,
+                                     int8_scales);
             break;
         case at::ScalarType::Half:
             ftglm = new FTGlm<half>(h,
@@ -71,7 +75,9 @@ GlmOp::GlmOp(const c10d::ProcessGroupNCCL& p,
                                     end_id,
                                     tensor_para_size,
                                     pipeline_para_size,
-                                    weights);
+                                    weights,
+                                    int8_weights,
+                                    int8_scales);
             break;
         default:
             throw std::runtime_error("Wrong Tensor type.");
@@ -84,17 +90,17 @@ GlmOp::~GlmOp()
 }
 
 std::vector<th::Tensor> GlmOp::forward(th::Tensor input_ids,
-                                               th::Tensor input_lengths,
-                                               const int64_t output_len,
-                                               const int64_t beam_width,
-                                               const int64_t top_k,
-                                               const double top_p,
-                                               const double beam_search_diversity_rate,
-                                               const double temperature,
-                                               const double len_penalty,
-                                               const double repetition_penalty,
-                                               const int64_t random_seed,
-                                               const int64_t return_cum_log_probs)
+                                       th::Tensor input_lengths,
+                                       const int64_t output_len,
+                                       const int64_t beam_width,
+                                       const int64_t top_k,
+                                       const double top_p,
+                                       const double beam_search_diversity_rate,
+                                       const double temperature,
+                                       const double len_penalty,
+                                       const double repetition_penalty,
+                                       const int64_t random_seed,
+                                       const int64_t return_cum_log_probs)
 {
     CHECK_TH_CUDA(input_ids);
     CHECK_CONTIGUOUS(input_ids);
@@ -114,9 +120,9 @@ std::vector<th::Tensor> GlmOp::forward(th::Tensor input_ids,
     th::Tensor output_ids = torch::empty({batch_size, beam_width, total_request_output_len},
                                          torch::dtype(torch::kInt32).device(torch::kCUDA).requires_grad(false));
     th::Tensor output_ids_buf = torch::empty({batch_size, beam_width, total_request_output_len},
-                                         torch::dtype(torch::kInt32).device(torch::kCUDA).requires_grad(false));
-    th::Tensor logits_buf =
-        torch::empty({batch_size, beam_width, vocab_size_}, torch::dtype(torch::kFloat32).device(torch::kCUDA).requires_grad(false));
+                                             torch::dtype(torch::kInt32).device(torch::kCUDA).requires_grad(false));
+    th::Tensor logits_buf = torch::empty({batch_size, beam_width, vocab_size_},
+                                         torch::dtype(torch::kFloat32).device(torch::kCUDA).requires_grad(false));
     th::Tensor parent_ids = torch::empty({total_request_output_len, batch_size, beam_width},
                                          torch::dtype(torch::kInt32).device(torch::kCUDA).requires_grad(false));
     th::Tensor sequence_lengths =
@@ -148,25 +154,24 @@ std::vector<th::Tensor> GlmOp::forward(th::Tensor input_ids,
     return std::vector<th::Tensor>{output_ids, sequence_lengths};
 }
 
-
 std::vector<th::Tensor> GlmOp::encode(th::Tensor input_ids,
-                                               th::Tensor input_lengths,
-                                               th::Tensor output_ids_buf,
-                                               th::Tensor logits_buf,
-                                               th::Tensor output_ids,
-                                               th::Tensor parent_ids,
-                                               th::Tensor sequence_lengths,
-                                               th::Tensor cum_log_probs,
-                                               const int64_t output_len,
-                                               const int64_t beam_width,
-                                               const int64_t top_k,
-                                               const double top_p,
-                                               const double beam_search_diversity_rate,
-                                               const double temperature,
-                                               const double len_penalty,
-                                               const double repetition_penalty,
-                                               const int64_t random_seed,
-                                               const int64_t return_cum_log_probs)
+                                      th::Tensor input_lengths,
+                                      th::Tensor output_ids_buf,
+                                      th::Tensor logits_buf,
+                                      th::Tensor output_ids,
+                                      th::Tensor parent_ids,
+                                      th::Tensor sequence_lengths,
+                                      th::Tensor cum_log_probs,
+                                      const int64_t output_len,
+                                      const int64_t beam_width,
+                                      const int64_t top_k,
+                                      const double top_p,
+                                      const double beam_search_diversity_rate,
+                                      const double temperature,
+                                      const double len_penalty,
+                                      const double repetition_penalty,
+                                      const int64_t random_seed,
+                                      const int64_t return_cum_log_probs)
 {
     CHECK_TH_CUDA(input_ids);
     CHECK_CONTIGUOUS(input_ids);
@@ -180,25 +185,24 @@ std::vector<th::Tensor> GlmOp::encode(th::Tensor input_ids,
                 " 1 (the cumulative log probs of generated sequences), or"
                 " 2 (the cumulative log probs of sequences).")
 
-
     ftglm->encode(input_ids,
-                   input_lengths,
-                   output_ids,
-                   output_ids_buf,
-                   logits_buf,
-                   parent_ids,
-                   sequence_lengths,
-                   cum_log_probs,
-                   (const size_t)output_len,
-                   (const size_t)beam_width,
-                   (const size_t)top_k,
-                   (const float)top_p,
-                   (const float)beam_search_diversity_rate,
-                   (const float)temperature,
-                   (const float)len_penalty,
-                   (const float)repetition_penalty,
-                   (const unsigned long long int)random_seed,
-                   return_cum_log_probs);
+                  input_lengths,
+                  output_ids,
+                  output_ids_buf,
+                  logits_buf,
+                  parent_ids,
+                  sequence_lengths,
+                  cum_log_probs,
+                  (const size_t)output_len,
+                  (const size_t)beam_width,
+                  (const size_t)top_k,
+                  (const float)top_p,
+                  (const float)beam_search_diversity_rate,
+                  (const float)temperature,
+                  (const float)len_penalty,
+                  (const float)repetition_penalty,
+                  (const unsigned long long int)random_seed,
+                  return_cum_log_probs);
 
     return std::vector<th::Tensor>{};
 }
@@ -209,27 +213,27 @@ std::vector<th::Tensor> GlmOp::decode(const int64_t step)
     return std::vector<th::Tensor>{};
 }
 
-
 }  // namespace torch_ext
 
-
-PYBIND11_MODULE(libth_glm, m) {
+PYBIND11_MODULE(libth_glm, m)
+{
     pybind11::class_<torch_ext::GlmOp>(m, "Glm")
         .def(pybind11::init<c10d::ProcessGroupNCCL&,
-                                int64_t,
-                                int64_t,
-                                int64_t,
-                                int64_t,
-                                int64_t,
-                                int64_t,
-                                int64_t,
-                                int64_t,
-                                int64_t,
-                                int64_t,
-                                int64_t,
-                                std::vector<th::Tensor>>())
+                            int64_t,
+                            int64_t,
+                            int64_t,
+                            int64_t,
+                            int64_t,
+                            int64_t,
+                            int64_t,
+                            int64_t,
+                            int64_t,
+                            int64_t,
+                            int64_t,
+                            std::vector<th::Tensor>,
+                            std::vector<th::Tensor>,
+                            std::vector<th::Tensor>>())
         .def("forward", &torch_ext::GlmOp::forward)
         .def("encode", &torch_ext::GlmOp::encode)
         .def("decode", &torch_ext::GlmOp::decode);
-
 }

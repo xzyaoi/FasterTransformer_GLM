@@ -365,6 +365,7 @@ void GlmContextDecoder<T>::forward(std::unordered_map<std::string, Tensor>* outp
                            self_attn_output_}};
                 std::vector<Tensor> glu_ffn_output_tensors{Tensor{
                     MEMORY_GPU, data_type, {(size_t)(local_batch_size * seq_len), (size_t)hidden_units_}, layer_output}};
+                
                 glu_ffn_layer_->forward(
                     &glu_ffn_output_tensors, &ffn_input_tensors, &glm_decoder_layer_weight->at(l)->glu_ffn_weights);
                 

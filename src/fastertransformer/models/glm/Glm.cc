@@ -27,36 +27,36 @@ template<typename T>
 void Glm<T>::initialize()
 {
     glm_context_decoder_ = new GlmContextDecoder<T>(0,
-                                                     0,
-                                                     head_num_,
-                                                     size_per_head_,
-                                                     inter_size_,
-                                                     num_layer_,
-                                                     rotary_embedding_dim_,
-                                                     tensor_para_,
-                                                     pipeline_para_,
-                                                     stream_,
-                                                     cublas_wrapper_,
-                                                     allocator_,
-                                                     is_free_buffer_after_forward_,
-                                                     is_context_qk_buf_float_,
-                                                     custom_all_reduce_comm_,
-                                                     enable_custom_all_reduce_);
+                                                    0,
+                                                    head_num_,
+                                                    size_per_head_,
+                                                    inter_size_,
+                                                    num_layer_,
+                                                    rotary_embedding_dim_,
+                                                    tensor_para_,
+                                                    pipeline_para_,
+                                                    stream_,
+                                                    cublas_wrapper_,
+                                                    allocator_,
+                                                    is_free_buffer_after_forward_,
+                                                    is_context_qk_buf_float_,
+                                                    custom_all_reduce_comm_,
+                                                    enable_custom_all_reduce_);
 
     glm_decoder_ = new GlmDecoder<T>(0,
-                                      head_num_,
-                                      size_per_head_,
-                                      inter_size_,
-                                      num_layer_,
-                                      rotary_embedding_dim_,
-                                      tensor_para_,
-                                      pipeline_para_,
-                                      stream_,
-                                      cublas_wrapper_,
-                                      allocator_,
-                                      is_free_buffer_after_forward_,
-                                      custom_all_reduce_comm_,
-                                      enable_custom_all_reduce_);
+                                     head_num_,
+                                     size_per_head_,
+                                     inter_size_,
+                                     num_layer_,
+                                     rotary_embedding_dim_,
+                                     tensor_para_,
+                                     pipeline_para_,
+                                     stream_,
+                                     cublas_wrapper_,
+                                     allocator_,
+                                     is_free_buffer_after_forward_,
+                                     custom_all_reduce_comm_,
+                                     enable_custom_all_reduce_);
 
     dynamic_decode_layer_ = new DynamicDecodeLayer<float>(vocab_size_,
                                                           vocab_size_padded_,
@@ -175,31 +175,31 @@ void Glm<T>::freeBuffer()
 
 template<typename T>
 Glm<T>::Glm(size_t max_batch_size,
-              size_t max_seq_len,
-              size_t max_input_len,
-              size_t beam_width,
-              size_t head_num,
-              size_t size_per_head,
-              size_t inter_size,
-              size_t num_layer,
-              size_t vocab_size,
-              size_t rotary_embedding_dim,
-              int start_id,
-              int end_id,
-              float beam_search_diversity_rate,
-              size_t top_k,
-              float top_p,
-              unsigned long long random_seed,
-              float temperature,
-              float len_penalty,
-              float repetition_penalty,
-              cudaStream_t stream,
-              cublasMMWrapper* cublas_wrapper,
-              IAllocator* allocator,
-              bool is_free_buffer_after_forward,
-              cudaDeviceProp* cuda_device_prop,
-              std::shared_ptr<AbstractCustomComm> custom_all_reduce_comm,
-              int enable_custom_all_reduce):
+            size_t max_seq_len,
+            size_t max_input_len,
+            size_t beam_width,
+            size_t head_num,
+            size_t size_per_head,
+            size_t inter_size,
+            size_t num_layer,
+            size_t vocab_size,
+            size_t rotary_embedding_dim,
+            int start_id,
+            int end_id,
+            float beam_search_diversity_rate,
+            size_t top_k,
+            float top_p,
+            unsigned long long random_seed,
+            float temperature,
+            float len_penalty,
+            float repetition_penalty,
+            cudaStream_t stream,
+            cublasMMWrapper* cublas_wrapper,
+            IAllocator* allocator,
+            bool is_free_buffer_after_forward,
+            cudaDeviceProp* cuda_device_prop,
+            std::shared_ptr<AbstractCustomComm> custom_all_reduce_comm,
+            int enable_custom_all_reduce):
     BaseLayer(stream, cublas_wrapper, allocator, is_free_buffer_after_forward, cuda_device_prop),
     head_num_(head_num),
     size_per_head_(size_per_head),
@@ -228,33 +228,33 @@ Glm<T>::Glm(size_t max_batch_size,
 
 template<typename T>
 Glm<T>::Glm(size_t max_batch_size,
-              size_t max_seq_len,
-              size_t max_input_len,
-              size_t beam_width,
-              size_t head_num,
-              size_t size_per_head,
-              size_t inter_size,
-              size_t num_layer,
-              size_t vocab_size,
-              size_t rotary_embedding_dim,
-              int start_id,
-              int end_id,
-              float beam_search_diversity_rate,
-              size_t top_k,
-              float top_p,
-              unsigned long long random_seed,
-              float temperature,
-              float len_penalty,
-              float repetition_penalty,
-              NcclParam tensor_para,
-              NcclParam pipeline_para,
-              cudaStream_t stream,
-              cublasMMWrapper* cublas_wrapper,
-              IAllocator* allocator,
-              bool is_free_buffer_after_forward,
-              cudaDeviceProp* cuda_device_prop,
-              std::shared_ptr<AbstractCustomComm> custom_all_reduce_comm,
-              int enable_custom_all_reduce):
+            size_t max_seq_len,
+            size_t max_input_len,
+            size_t beam_width,
+            size_t head_num,
+            size_t size_per_head,
+            size_t inter_size,
+            size_t num_layer,
+            size_t vocab_size,
+            size_t rotary_embedding_dim,
+            int start_id,
+            int end_id,
+            float beam_search_diversity_rate,
+            size_t top_k,
+            float top_p,
+            unsigned long long random_seed,
+            float temperature,
+            float len_penalty,
+            float repetition_penalty,
+            NcclParam tensor_para,
+            NcclParam pipeline_para,
+            cudaStream_t stream,
+            cublasMMWrapper* cublas_wrapper,
+            IAllocator* allocator,
+            bool is_free_buffer_after_forward,
+            cudaDeviceProp* cuda_device_prop,
+            std::shared_ptr<AbstractCustomComm> custom_all_reduce_comm,
+            int enable_custom_all_reduce):
     BaseLayer(stream, cublas_wrapper, allocator, is_free_buffer_after_forward, cuda_device_prop),
     head_num_(head_num),
     size_per_head_(size_per_head),
@@ -312,16 +312,17 @@ Glm<T>::~Glm()
 
 template<typename T>
 void Glm<T>::forward(std::vector<Tensor>* output_tensors,
-                      const std::vector<Tensor>* input_tensors,
-                      const GlmWeight<T>* glm_weights)
+                     const std::vector<Tensor>* input_tensors,
+                     const GlmWeight<T>* glm_weights)
 {
     FT_CHECK(false);
 }
 
 template<typename T>
 void Glm<T>::encode(std::unordered_map<std::string, Tensor>* output_tensors,
-                      const std::unordered_map<std::string, Tensor>* input_tensors,
-                      const GlmWeight<T>* glm_weights) {
+                    const std::unordered_map<std::string, Tensor>* input_tensors,
+                    const GlmWeight<T>* glm_weights)
+{
     // input_tensors:
     //      input_ids [batch_size, max_input_length]
     //      input_lengths [batch_size]
@@ -368,16 +369,16 @@ void Glm<T>::encode(std::unordered_map<std::string, Tensor>* output_tensors,
     batch_size = output_tensors->at("output_ids").shape[0];
     beam_width = output_tensors->at("output_ids").shape[1];
     max_input_length = input_tensors->at("input_ids").shape[1];
-    
+
     max_prefix_soft_prompt_length = input_tensors->count("prefix_soft_prompt_embedding") ?
-                                                     input_tensors->at("prefix_soft_prompt_embedding").shape[1] :
-                                                     0;
+                                        input_tensors->at("prefix_soft_prompt_embedding").shape[1] :
+                                        0;
     max_output_seq_len = *std::max_element(input_tensors->at("max_output_seq_len").getPtr<int>(),
-                                                        input_tensors->at("max_output_seq_len").getPtr<int>()
-                                                            + input_tensors->at("max_output_seq_len").shape[0])
-                                      + (max_input_length == 0 ? 1 : 0)  // additional 1 to put start token
-                                      + max_prefix_soft_prompt_length;
-    
+                                           input_tensors->at("max_output_seq_len").getPtr<int>()
+                                               + input_tensors->at("max_output_seq_len").shape[0])
+                         + (max_input_length == 0 ? 1 : 0)  // additional 1 to put start token
+                         + max_prefix_soft_prompt_length;
+
     max_seq_len = max_output_seq_len;
     allocateBuffer(batch_size, beam_width, max_seq_len, max_input_length + max_prefix_soft_prompt_length);
     sync_check_cuda_error();
@@ -395,16 +396,16 @@ void Glm<T>::encode(std::unordered_map<std::string, Tensor>* output_tensors,
     handleOptArg(input_tensors, "end_id", end_ids_buf_, end_id_, batch_size);
 
     self_k_cache_shape = {num_layer_ / pipeline_para_.world_size_,
-                                                    batch_size * beam_width,
-                                                    local_head_num_,
-                                                    size_per_head_ / (16 / sizeof(T)),
-                                                    max_output_seq_len,
-                                                    16 / sizeof(T)};
+                          batch_size * beam_width,
+                          local_head_num_,
+                          size_per_head_ / (16 / sizeof(T)),
+                          max_output_seq_len,
+                          16 / sizeof(T)};
     self_v_cache_shape = {num_layer_ / pipeline_para_.world_size_,
-                                                    batch_size * beam_width,
-                                                    local_head_num_,
-                                                    max_output_seq_len,
-                                                    size_per_head_};
+                          batch_size * beam_width,
+                          local_head_num_,
+                          max_output_seq_len,
+                          size_per_head_};
 
     // initialize the output ids and parent ids
     cudaMemsetAsync(output_ids_buf_, 0, sizeof(int) * batch_size * beam_width * max_seq_len, stream_);
@@ -426,7 +427,6 @@ void Glm<T>::encode(std::unordered_map<std::string, Tensor>* output_tensors,
                         stream_);
         sync_check_cuda_error();
     }
-
 
     // handle first step
     if (input_tensors->count("prefix_soft_prompt_embedding") || max_input_length >= 1) {
@@ -505,9 +505,11 @@ void Glm<T>::encode(std::unordered_map<std::string, Tensor>* output_tensors,
             {"last_token_hidden_units",
              Tensor{MEMORY_GPU, data_type, {batch_size * beam_width, hidden_units_}, decoder_output_buf_}}};
 
-        glm_context_decoder_->forward(
-            &decoder_output_tensors, &decoder_input_tensors, &glm_weights->decoder_layer_weights, &glm_weights->post_decoder_layernorm);
-        
+        glm_context_decoder_->forward(&decoder_output_tensors,
+                                      &decoder_input_tensors,
+                                      &glm_weights->decoder_layer_weights,
+                                      &glm_weights->post_decoder_layernorm);
+
         sync_check_cuda_error();
 
         invokeDecodingInitialize(finished_buf_,
@@ -571,10 +573,11 @@ void Glm<T>::encode(std::unordered_map<std::string, Tensor>* output_tensors,
 
 template<typename T>
 void Glm<T>::decode(std::unordered_map<std::string, Tensor>* output_tensors,
-                      const std::unordered_map<std::string, Tensor>* input_tensors,
-                      const GlmWeight<T>* glm_weights,
-                      const int step,
-                      const bool enable_dynamic_decode) {
+                    const std::unordered_map<std::string, Tensor>* input_tensors,
+                    const GlmWeight<T>* glm_weights,
+                    const int step,
+                    const bool enable_dynamic_decode)
+{
     const int src_indir_idx = (step - max_input_length) % 2;
     const int tgt_indir_idx = 1 - src_indir_idx;
 
@@ -590,87 +593,82 @@ void Glm<T>::decode(std::unordered_map<std::string, Tensor>* output_tensors,
         if (!(max_input_length > 1 && step == max_input_length)) {
             if (pipeline_para_.rank_ == 0) {
                 invokeEmbeddingLookupPosEncoding(decoder_input_buf_ + hidden_units_offset,
-                                                    glm_weights->pre_decoder_embedding_table,
-                                                    glm_weights->position_encoding_table,
-                                                    output_ids_buf_ + id_offset,
-                                                    tiled_input_lengths_buf_ + id_offset,
-                                                    local_batch_size * beam_width,
-                                                    hidden_units_,
-                                                    (T)(1.0f),
-                                                    step - 1,
-                                                    max_input_length,
-                                                    batch_size * beam_width,
-                                                    0,
-                                                    stream_);
+                                                 glm_weights->pre_decoder_embedding_table,
+                                                 glm_weights->position_encoding_table,
+                                                 output_ids_buf_ + id_offset,
+                                                 tiled_input_lengths_buf_ + id_offset,
+                                                 local_batch_size * beam_width,
+                                                 hidden_units_,
+                                                 (T)(1.0f),
+                                                 step - 1,
+                                                 max_input_length,
+                                                 batch_size * beam_width,
+                                                 0,
+                                                 stream_);
                 sync_check_cuda_error();
             }
             std::unordered_map<std::string, Tensor> decoder_input_tensors{
                 {"decoder_input",
-                    Tensor{MEMORY_GPU,
+                 Tensor{MEMORY_GPU,
                         data_type,
                         {local_batch_size * beam_width, hidden_units_},
                         decoder_input_buf_ + hidden_units_offset}},
-                {"finished",
-                    Tensor{MEMORY_GPU, TYPE_BOOL, {local_batch_size * beam_width}, finished_buf_ + id_offset}},
+                {"finished", Tensor{MEMORY_GPU, TYPE_BOOL, {local_batch_size * beam_width}, finished_buf_ + id_offset}},
                 {"sequence_lengths",
-                    Tensor{MEMORY_GPU, TYPE_INT32, {local_batch_size * beam_width}, sequence_lengths + id_offset}},
+                 Tensor{MEMORY_GPU, TYPE_INT32, {local_batch_size * beam_width}, sequence_lengths + id_offset}},
                 {"input_lengths",
-                    Tensor{MEMORY_GPU,
-                        TYPE_INT32,
-                        {local_batch_size * beam_width},
-                        tiled_input_lengths_buf_ + id_offset}},
+                 Tensor{MEMORY_GPU, TYPE_INT32, {local_batch_size * beam_width}, tiled_input_lengths_buf_ + id_offset}},
                 {"max_input_length", Tensor{MEMORY_CPU, TYPE_INT32, {1}, &max_input_length}},
                 {"step", Tensor{MEMORY_CPU, TYPE_INT32, {1}, &step}},
                 {"ite", Tensor{MEMORY_CPU, TYPE_INT32, {1}, &ite}},
                 {"cache_indirection",
-                    Tensor{MEMORY_GPU,
+                 Tensor{MEMORY_GPU,
                         TYPE_INT32,
                         {local_batch_size, beam_width, max_output_seq_len},
                         beam_width > 1 ? cache_indirections_[src_indir_idx] + id_offset * max_output_seq_len :
-                                            nullptr}}};
+                                         nullptr}}};
             std::unordered_map<std::string, Tensor> decoder_output_tensors{
                 {"decoder_output",
-                    Tensor{MEMORY_GPU,
+                 Tensor{MEMORY_GPU,
                         data_type,
                         {local_batch_size * beam_width, hidden_units_},
                         decoder_output_buf_ + hidden_units_offset}},
                 {"key_cache", Tensor{MEMORY_GPU, data_type, self_k_cache_shape, key_cache_}},
                 {"value_cache", Tensor{MEMORY_GPU, data_type, self_v_cache_shape, value_cache_}}};
-            glm_decoder_->forward(
-                &decoder_output_tensors, &decoder_input_tensors, &glm_weights->decoder_layer_weights);
+            glm_decoder_->forward(&decoder_output_tensors, &decoder_input_tensors, &glm_weights->decoder_layer_weights);
         }
 
         if (pipeline_para_.rank_ == pipeline_para_.world_size_ - 1) {
             invokeGeneralLayerNorm(normed_decoder_output_buf_ + hidden_units_offset,
-                                decoder_output_buf_ + hidden_units_offset,
-                                glm_weights->post_decoder_layernorm.gamma,
-                                glm_weights->post_decoder_layernorm.beta,
-                                local_batch_size * beam_width,
-                                hidden_units_,
-                                stream_,
-                                1e-5f);
+                                   decoder_output_buf_ + hidden_units_offset,
+                                   glm_weights->post_decoder_layernorm.gamma,
+                                   glm_weights->post_decoder_layernorm.beta,
+                                   local_batch_size * beam_width,
+                                   hidden_units_,
+                                   stream_,
+                                   1e-5f);
             sync_check_cuda_error();
             if (tensor_para_.world_size_ == 1) {
                 float alpha = 1.0f;
                 float beta = 0.0f;
                 cublas_wrapper_->Gemm(CUBLAS_OP_T,
-                                    CUBLAS_OP_N,
-                                    vocab_size_padded_,  // n
-                                    local_batch_size * beam_width,
-                                    hidden_units_,  // k
-                                    &alpha,
-                                    padded_embedding_kernel_ptr_,
-                                    sizeof(T) == 2 ? CUDA_R_16F : CUDA_R_32F,
-                                    hidden_units_,  // k
-                                    normed_decoder_output_buf_ + hidden_units_offset,
-                                    sizeof(T) == 2 ? CUDA_R_16F : CUDA_R_32F,
-                                    hidden_units_,  // k
-                                    &beta,
-                                    logits_buf_ + vocab_size_units_offset,
-                                    CUDA_R_32F,
-                                    vocab_size_padded_, /* n */
-                                    CUDA_R_32F,
-                                    cublasGemmAlgo_t(-1));
+                                      CUBLAS_OP_N,
+                                      vocab_size_padded_,  // n
+                                      local_batch_size * beam_width,
+                                      hidden_units_,  // k
+                                      &alpha,
+                                      padded_embedding_kernel_ptr_,
+                                      sizeof(T) == 2 ? CUDA_R_16F : CUDA_R_32F,
+                                      hidden_units_,  // k
+                                      normed_decoder_output_buf_ + hidden_units_offset,
+                                      sizeof(T) == 2 ? CUDA_R_16F : CUDA_R_32F,
+                                      hidden_units_,  // k
+                                      &beta,
+                                      logits_buf_ + vocab_size_units_offset,
+                                      CUDA_R_32F,
+                                      vocab_size_padded_, /* n */
+                                      CUDA_R_32F,
+                                      cublasGemmAlgo_t(-1));
             }
             else {
                 FT_CHECK(vocab_size_padded_ % tensor_para_.world_size_ == 0);
@@ -678,26 +676,26 @@ void Glm<T>::decode(std::unordered_map<std::string, Tensor>* output_tensors,
                 float alpha = 1.0f;
                 float beta = 0.0f;
                 cublas_wrapper_->Gemm(CUBLAS_OP_T,
-                                    CUBLAS_OP_N,
-                                    local_vocab_size,  // n
-                                    local_batch_size * beam_width,
-                                    hidden_units_,  // k
-                                    &alpha,
-                                    padded_embedding_kernel_ptr_
-                                        + tensor_para_.rank_ * local_vocab_size * hidden_units_,
-                                    sizeof(T) == 2 ? CUDA_R_16F : CUDA_R_32F,
-                                    hidden_units_,  // k
-                                    normed_decoder_output_buf_ + hidden_units_offset,
-                                    sizeof(T) == 2 ? CUDA_R_16F : CUDA_R_32F,
-                                    hidden_units_,  // k
-                                    &beta,
-                                    nccl_logits_buf_ + vocab_size_units_offset
-                                            + tensor_para_.rank_ * local_batch_size * beam_width * local_vocab_size,
-                                    CUDA_R_32F,
-                                    local_vocab_size, /* n */
-                                    CUDA_R_32F,
-                                    cublasGemmAlgo_t(-1));
-                
+                                      CUBLAS_OP_N,
+                                      local_vocab_size,  // n
+                                      local_batch_size * beam_width,
+                                      hidden_units_,  // k
+                                      &alpha,
+                                      padded_embedding_kernel_ptr_
+                                          + tensor_para_.rank_ * local_vocab_size * hidden_units_,
+                                      sizeof(T) == 2 ? CUDA_R_16F : CUDA_R_32F,
+                                      hidden_units_,  // k
+                                      normed_decoder_output_buf_ + hidden_units_offset,
+                                      sizeof(T) == 2 ? CUDA_R_16F : CUDA_R_32F,
+                                      hidden_units_,  // k
+                                      &beta,
+                                      nccl_logits_buf_ + vocab_size_units_offset
+                                          + tensor_para_.rank_ * local_batch_size * beam_width * local_vocab_size,
+                                      CUDA_R_32F,
+                                      local_vocab_size, /* n */
+                                      CUDA_R_32F,
+                                      cublasGemmAlgo_t(-1));
+
                 ftNcclAllGather(nccl_logits_buf_ + vocab_size_units_offset,
                                 nccl_logits_buf_ + vocab_size_units_offset,
                                 local_batch_size * beam_width * local_vocab_size,
@@ -706,30 +704,30 @@ void Glm<T>::decode(std::unordered_map<std::string, Tensor>* output_tensors,
                                 stream_);
                 check_cuda_error(cudaStreamSynchronize(stream_));
                 invokeTransposeAxis01(logits_buf_ + vocab_size_units_offset,
-                                    nccl_logits_buf_ + vocab_size_units_offset,
-                                    tensor_para_.world_size_,
-                                    local_batch_size * beam_width,
-                                    local_vocab_size,
-                                    stream_);
+                                      nccl_logits_buf_ + vocab_size_units_offset,
+                                      tensor_para_.world_size_,
+                                      local_batch_size * beam_width,
+                                      local_vocab_size,
+                                      stream_);
             }
 
-            if(enable_dynamic_decode) {
+            if (enable_dynamic_decode) {
                 int tmp_local_batch_size = local_batch_size;
                 bool is_initialize_random_table = step == max_input_length;
                 std::unordered_map<std::string, Tensor> dynamic_decode_input_tensors{
                     {"logits",
-                        Tensor{MEMORY_GPU, TYPE_FP32, {batch_size, beam_width, vocab_size_padded_}, logits_buf_}},
+                     Tensor{MEMORY_GPU, TYPE_FP32, {batch_size, beam_width, vocab_size_padded_}, logits_buf_}},
                     {"embedding_bias", Tensor{MEMORY_GPU, data_type, {vocab_size_padded_}, nullptr}},
                     {"step", Tensor{MEMORY_CPU, TYPE_INT32, {1}, &step}},
                     {"max_input_length", Tensor{MEMORY_CPU, TYPE_INT32, {1}, &max_input_length}},
                     {"input_lengths",
-                        Tensor{MEMORY_GPU, TYPE_INT32, {batch_size, beam_width}, tiled_input_lengths_buf_}},
+                     Tensor{MEMORY_GPU, TYPE_INT32, {batch_size, beam_width}, tiled_input_lengths_buf_}},
                     {"ite", Tensor{MEMORY_CPU, TYPE_UINT32, {1}, &ite}},
                     {"has_diff_runtime_args", Tensor{MEMORY_CPU, TYPE_BOOL, {1}, &has_diff_runtime_args}},
                     {"src_key_cache", Tensor{MEMORY_GPU, data_type, self_k_cache_shape, key_cache_}},
                     {"src_value_cache", Tensor{MEMORY_GPU, data_type, self_v_cache_shape, value_cache_}},
                     {"src_cache_indirection",
-                        Tensor{MEMORY_GPU,
+                     Tensor{MEMORY_GPU,
                             TYPE_INT32,
                             {local_batch_size, beam_width, max_output_seq_len},
                             cache_indirections_[src_indir_idx] + id_offset * max_output_seq_len}},
@@ -746,17 +744,17 @@ void Glm<T>::decode(std::unordered_map<std::string, Tensor>* output_tensors,
                 // common outputs
                 std::unordered_map<std::string, Tensor> dynamic_decode_output_tensors{
                     {"output_ids",
-                        Tensor{MEMORY_GPU, TYPE_INT32, {max_seq_len, batch_size, beam_width}, output_ids_buf_}},
+                     Tensor{MEMORY_GPU, TYPE_INT32, {max_seq_len, batch_size, beam_width}, output_ids_buf_}},
                     {"finished", Tensor{MEMORY_GPU, TYPE_BOOL, {batch_size * beam_width}, finished_buf_}},
                     // cum_log_probs is necessary for beam search, while it is optional for sampling.
                     {"cum_log_probs",
-                        Tensor{MEMORY_GPU,
+                     Tensor{MEMORY_GPU,
                             TYPE_FP32,
                             {batch_size * beam_width},
                             ((beam_width > 1) || (output_tensors->count("cum_log_probs") > 0)) ? cum_log_probs_ :
-                                                                                                    nullptr}},
+                                                                                                 nullptr}},
                     {"output_log_probs",
-                        Tensor{MEMORY_GPU,
+                     Tensor{MEMORY_GPU,
                             TYPE_FP32,
                             {max_seq_len, batch_size, beam_width},
                             output_tensors->count("output_log_probs") > 0
@@ -764,10 +762,10 @@ void Glm<T>::decode(std::unordered_map<std::string, Tensor>* output_tensors,
                                 output_log_probs_buf_ :
                                 nullptr}},
                     {"parent_ids",
-                        Tensor{MEMORY_GPU, TYPE_INT32, {max_seq_len, batch_size, beam_width}, parent_ids_buf_}},
+                     Tensor{MEMORY_GPU, TYPE_INT32, {max_seq_len, batch_size, beam_width}, parent_ids_buf_}},
                     {"sequence_length", Tensor{MEMORY_GPU, TYPE_INT32, {batch_size * beam_width}, sequence_lengths}},
                     {"tgt_cache_indirection",
-                        Tensor{MEMORY_GPU,
+                     Tensor{MEMORY_GPU,
                             TYPE_INT32,
                             {local_batch_size, beam_width, max_output_seq_len},
                             cache_indirections_[tgt_indir_idx] + id_offset * max_output_seq_len}}};
@@ -781,7 +779,6 @@ void Glm<T>::decode(std::unordered_map<std::string, Tensor>* output_tensors,
                 }
 
                 dynamic_decode_layer_->forward(&dynamic_decode_output_tensors, &dynamic_decode_input_tensors);
-
             }
         }
     }
@@ -789,8 +786,8 @@ void Glm<T>::decode(std::unordered_map<std::string, Tensor>* output_tensors,
 
 template<typename T>
 void Glm<T>::gather(std::unordered_map<std::string, Tensor>* output_tensors,
-                      const std::unordered_map<std::string, Tensor>* input_tensors,
-                      const GlmWeight<T>* glm_weights)
+                    const std::unordered_map<std::string, Tensor>* input_tensors,
+                    const GlmWeight<T>* glm_weights)
 {
 
     if (pipeline_para_.rank_ == pipeline_para_.world_size_ - 1) {
@@ -937,10 +934,11 @@ void Glm<T>::gather(std::unordered_map<std::string, Tensor>* output_tensors,
 
 template<typename T>
 void Glm<T>::forward(std::unordered_map<std::string, Tensor>* output_tensors,
-                      const std::unordered_map<std::string, Tensor>* input_tensors,
-                      const GlmWeight<T>* glm_weights)
+                     const std::unordered_map<std::string, Tensor>* input_tensors,
+                     const GlmWeight<T>* glm_weights)
 {
     encode(output_tensors, input_tensors, glm_weights);
+    return;
     for (int step = max_input_length; step < (int)max_output_seq_len; step++) {
         decode(output_tensors, input_tensors, glm_weights, step);
 
@@ -971,7 +969,7 @@ void Glm<T>::forward(std::unordered_map<std::string, Tensor>* output_tensors,
             check_cuda_error(cudaStreamSynchronize(stream_));
             sync_check_cuda_error();
         }
-        
+
         cudaD2Hcpy(h_finished_buf_, finished_buf_, batch_size * beam_width);
         uint sum = 0;
         for (uint i = 0; i < batch_size * beam_width; i++) {
@@ -989,7 +987,6 @@ void Glm<T>::forward(std::unordered_map<std::string, Tensor>* output_tensors,
         }
     }
     gather(output_tensors, input_tensors, glm_weights);
-    
 }
 
 template<typename T>

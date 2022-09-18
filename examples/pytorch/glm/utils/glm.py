@@ -69,21 +69,39 @@ class GlmWeights(object):
         self.local_inter_size = local_inter_size
 
         self.w = []
+        self.int8_w = []
+        self.int8_scale = []
         # Transformer blocks
-        self.w.extend([torch.zeros(global_hidden_units * 3 * local_hidden_units)] * layer_num)             # attention.query_key_value.weight
+
         self.w.extend([torch.zeros(3 * local_hidden_units)] * layer_num)                                   # attention.query_key_value.bias
-        self.w.extend([torch.zeros(local_hidden_units * global_hidden_units)] * layer_num)                                   # attention.dense.weight
         self.w.extend([torch.zeros(global_hidden_units)] * layer_num)                                   # attention.dense.bias
         self.w.extend([torch.zeros(global_hidden_units)] * layer_num)                                   # input_layernorm.bias
         self.w.extend([torch.zeros(global_hidden_units)] * layer_num)                                   # input_layernorm.weight
-        self.w.extend([torch.zeros(global_hidden_units * local_inter_size)] * layer_num)                                   # mlp.dense_h_to_4h.weight.1
         self.w.extend([torch.zeros(local_inter_size)] * layer_num)                                   # mlp.dense_h_to_4h.bias.1
-        self.w.extend([torch.zeros(global_hidden_units * local_inter_size)] * layer_num)                                   # mlp.dense_h_to_4h.weight.2
         self.w.extend([torch.zeros(local_inter_size)] * layer_num)                                   # mlp.dense_h_to_4h.bias.2
-        self.w.extend([torch.zeros(local_inter_size * global_hidden_units)] * layer_num)                                   # mlp.dense_4h_to_h.weight
         self.w.extend([torch.zeros(global_hidden_units)] * layer_num)                                   # mlp.dense_4h_to_h.bias
         self.w.extend([torch.zeros(global_hidden_units)] * layer_num)                                   # post_attention_layernorm.bias
         self.w.extend([torch.zeros(global_hidden_units)] * layer_num)                                   # post_attention_layernorm.weight
+        
+        # self.w.extend([torch.zeros(global_hidden_units * 3 * local_hidden_units)] * layer_num)             # attention.query_key_value.weight
+        # self.w.extend([torch.zeros(local_hidden_units * global_hidden_units)] * layer_num)                                   # attention.dense.weight
+        # self.w.extend([torch.zeros(global_hidden_units * local_inter_size)] * layer_num)                                   # mlp.dense_h_to_4h.weight.1
+        # self.w.extend([torch.zeros(global_hidden_units * local_inter_size)] * layer_num)                                   # mlp.dense_h_to_4h.weight.2
+        # self.w.extend([torch.zeros(local_inter_size * global_hidden_units)] * layer_num)                                   # mlp.dense_4h_to_h.weight
+        
+        self.int8_w.extend([torch.zeros(global_hidden_units * 3 * local_hidden_units // 2, dtype = torch.int8)] * layer_num)             # attention.query_key_value.weight
+        self.int8_w.extend([torch.zeros(local_hidden_units * global_hidden_units // 2, dtype = torch.int8)] * layer_num)                                   # attention.dense.weight
+        self.int8_w.extend([torch.zeros(global_hidden_units * local_inter_size // 2, dtype = torch.int8)] * layer_num)                                   # mlp.dense_h_to_4h.weight.1
+        self.int8_w.extend([torch.zeros(global_hidden_units * local_inter_size // 2, dtype = torch.int8)] * layer_num)                                   # mlp.dense_h_to_4h.weight.2
+        self.int8_w.extend([torch.zeros(local_inter_size * global_hidden_units // 2, dtype = torch.int8)] * layer_num)                                   # mlp.dense_4h_to_h.weight
+        
+        # scale
+        self.int8_scale.extend([torch.zeros(3 * local_hidden_units, dtype = torch.float32)] * layer_num)
+        self.int8_scale.extend([torch.zeros(global_hidden_units, dtype = torch.float32)] * layer_num)
+        self.int8_scale.extend([torch.zeros(local_inter_size, dtype = torch.float32)] * layer_num)
+        self.int8_scale.extend([torch.zeros(local_inter_size, dtype = torch.float32)] * layer_num)
+        self.int8_scale.extend([torch.zeros(global_hidden_units, dtype = torch.float32)] * layer_num)
+        
         # After Transformer blocks
         self.w.append(torch.zeros(global_hidden_units))   # layernorm_gamma final_layernorm.weight
         self.w.append(torch.zeros(global_hidden_units))   # layernorm_beta  final_layernorm.bias
@@ -103,13 +121,15 @@ class GlmWeights(object):
     def __len__(self):
         return len(self.w)
 
-    def _map(self, func):
-        for i in range(len(self.w)):
-            if isinstance(self.w[i], list):
-                for j in range(len(self.w[i])):
-                    self.w[i][j] = func(self.w[i][j])
+    def _map(self, func, w = None):
+        if not w:
+            w = self.w
+        for i in range(len(w)):
+            if isinstance(w[i], list):
+                for j in range(len(w[i])):
+                    w[i][j] = func(w[i][j])
             else:
-                self.w[i] = func(self.w[i])
+                w[i] = func(w[i])
 
     def load(self, ckpt_path, tensor_para_rank, pipeline_para_rank):
         if not os.path.exists(ckpt_path):
@@ -118,24 +138,40 @@ class GlmWeights(object):
 
         # Load
         w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.attention.query_key_value.weight.{}.bin".format(i, tensor_para_rank), dtype=np.half)) for i in range(self.layer_num)])
+
         w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.attention.query_key_value.bias.{}.bin".format(i, tensor_para_rank), dtype=np.half)) for i in range(self.layer_num)])
-        w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.attention.dense.weight.{}.bin".format(i, tensor_para_rank), dtype=np.half)) for i in range(self.layer_num)])
         w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.attention.dense.bias.{}.bin".format(i, tensor_para_rank), dtype=np.half)) for i in range(self.layer_num)])
         w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.input_layernorm.bias.{}.bin".format(i, tensor_para_rank), dtype=np.half)) for i in range(self.layer_num)])
         w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.input_layernorm.weight.{}.bin".format(i, tensor_para_rank), dtype=np.half)) for i in range(self.layer_num)])
-        w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.mlp.dense_h_to_4h.weight.{}.1.bin".format(i, tensor_para_rank), dtype=np.half)) for i in range(self.layer_num)])
         w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.mlp.dense_h_to_4h.bias.{}.1.bin".format(i, tensor_para_rank), dtype=np.half)) for i in range(self.layer_num)])
-        w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.mlp.dense_h_to_4h.weight.{}.2.bin".format(i, tensor_para_rank), dtype=np.half)) for i in range(self.layer_num)])
         w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.mlp.dense_h_to_4h.bias.{}.2.bin".format(i, tensor_para_rank), dtype=np.half)) for i in range(self.layer_num)])
-        w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.mlp.dense_4h_to_h.weight.{}.bin".format(i, tensor_para_rank), dtype=np.half)) for i in range(self.layer_num)])
         w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.mlp.dense_4h_to_h.bias.{}.bin".format(i, tensor_para_rank), dtype=np.half)) for i in range(self.layer_num)])
         w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.post_attention_layernorm.bias.{}.bin".format(i, tensor_para_rank), dtype=np.half)) for i in range(self.layer_num)])
         w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.post_attention_layernorm.weight.{}.bin".format(i, tensor_para_rank), dtype=np.half)) for i in range(self.layer_num)])
+
+        w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.attention.query_key_value.weight.{}.bin".format(i, tensor_para_rank), dtype=np.half)) for i in range(self.layer_num)])
+        w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.attention.dense.weight.{}.bin".format(i, tensor_para_rank), dtype=np.half)) for i in range(self.layer_num)])
+        w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.mlp.dense_h_to_4h.weight.{}.1.bin".format(i, tensor_para_rank), dtype=np.half)) for i in range(self.layer_num)])
+        w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.mlp.dense_h_to_4h.weight.{}.2.bin".format(i, tensor_para_rank), dtype=np.half)) for i in range(self.layer_num)])
+        w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.mlp.dense_4h_to_h.weight.{}.bin".format(i, tensor_para_rank), dtype=np.half)) for i in range(self.layer_num)])
+
+        # scale
+        w.extend([torch.zeros(3 * local_hidden_units)] * layer_num)
+        w.extend([torch.zeros(global_hidden_units)] * layer_num)
+        w.extend([torch.zeros(local_inter_size)] * layer_num)
+        w.extend([torch.zeros(local_inter_size)] * layer_num)
+        w.extend([torch.zeros(global_hidden_units)] * layer_num)
+
 
         w.append(torch.from_numpy(np.fromfile(ckpt_path + "/model.final_layernorm.weight.{}.bin".format(tensor_para_rank), dtype=np.half)))
         w.append(torch.from_numpy(np.fromfile(ckpt_path + "/model.final_layernorm.bias.{}.bin".format(tensor_para_rank), dtype=np.half)))
         w.append(torch.from_numpy(np.fromfile(ckpt_path + "/model.wte.bin", dtype=np.half)))
         # w.append(torch.from_numpy(np.fromfile(ckpt_path + "/model.wte.bin", dtype=np.half)))
+
+        if self.rank == 0:
+            import pdb
+            pdb.set_trace()
+        torch.distributed.barrier()
 
         # Reshape
         try:
@@ -178,7 +214,7 @@ class Glm(nn.Module):
         self.build_model = False
 
         assert torch.cuda.is_available(), "CUDA is required for this model."
-
+ 
         assert head_num % tensor_para_size == 0, "head_num must be a multiple of tensor_para_size."
         assert layer_num % pipeline_para_size == 0, "layer_num must be a multiple of pipeline_para_size."
 
@@ -216,7 +252,7 @@ class Glm(nn.Module):
         return is_load
 
     def half(self):
-        self.weights._map(lambda w: w.half())
+        self.weights._map(lambda w: w.half())   
         # self.cuda()
 
     def bfloat16(self):
@@ -229,15 +265,25 @@ class Glm(nn.Module):
             # self.cuda()
 
     def cuda(self):
+        # print(self.device)
+        # if int(self.device) == 3:
         self.weights._map(lambda w: w.cuda(self.device))
-        
+        self.weights._map(lambda w: w.cuda(self.device), self.weights.int8_w)
+        self.weights._map(lambda w: w.cuda(self.device), self.weights.int8_scale)        
+        # import time
+        # print(self.device)
+        # time.sleep(200000)
+        # exit()
+
         if self.build_model:
-            del self.model
-            self.build_model = False
-        
-        self.model = self.Glm(get_torch_default_comm(), self.rank, self.head_num, self.size_per_head, self.head_num * self.size_per_head * 8 // 3,
-                                                           self.layer_num, self.vocab_size, self.rotary_embedding_dim, self.start_id, self.end_id,
-                                                           self.tensor_para_size, self.pipeline_para_size, self.weights.w)
+            pass
+            # del self.model
+            # self.build_model = False
+        else:
+            
+            self.model = self.Glm(get_torch_default_comm(), self.rank, self.head_num, self.size_per_head, self.head_num * self.size_per_head * 8 // 3,
+                                                            self.layer_num, self.vocab_size, self.rotary_embedding_dim, self.start_id, self.end_id,
+                                                            self.tensor_para_size, self.pipeline_para_size, self.weights.w, self.weights.int8_w, self.weights.int8_scale)
         self.build_model = True
 
     def forward(self,
@@ -258,24 +304,12 @@ class Glm(nn.Module):
             self.cuda()
         input_len = start_ids.size(1)
         assert input_len > 0, "input len must be larger than zero. For an unconditional case, use start_id as the first token."
-
+        
         # Inputs to device
         start_ids = start_ids.cuda(self.device)
         start_lengths = start_lengths.cuda(self.device)
         # outputs: output_ids, output_lengths, output_cum_log_probs (optional)
-        outputs = self.model.forward(start_ids,
-                                     start_lengths,
-                                     output_len,
-                                     beam_width,
-                                     top_k,
-                                     top_p,
-                                     beam_search_diversity_rate,
-                                     temperature,
-                                     len_penalty,
-                                     repetition_penalty,
-                                     random_seed,
-                                     return_cum_log_probs)
-        
+
         # output_ids_buf = torch.zeros([start_ids.shape[0],beam_width,input_len + output_len],dtype=torch.int32).cuda()
         # logits_buf = torch.zeros([start_ids.shape[0],beam_width,self.vocab_size],dtype=torch.float32).cuda()
         
@@ -293,6 +327,21 @@ class Glm(nn.Module):
         #                     repetition_penalty,
         #                     random_seed,
         #                     return_cum_log_probs)
+
+
+        outputs = self.model.forward(start_ids,
+                                     start_lengths,
+                                     output_len,
+                                     beam_width,
+                                     top_k,
+                                     top_p,
+                                     beam_search_diversity_rate,
+                                     temperature,
+                                     len_penalty,
+                                     repetition_penalty,
+                                     random_seed,
+                                     return_cum_log_probs)
+        
         # self.model.decode(input_len)
         # output_ids_buf[0][0][input_len] += logits_buf.argmax()
         # self.model.decode(input_len+1)

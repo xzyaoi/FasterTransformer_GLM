@@ -46,12 +46,17 @@ public:
 
 
 private:
+    int int8_mode = 0;
     int hidden_units_;
     int inter_size_;
     int tensor_para_size_;
     int tensor_para_rank_;
     bool is_maintain_buffer = false;
-    T* weights_ptr[14];
+    T* weights_ptr[9];
+    T* kernel_ptr[5];
+    
+    int8_t* int8_kernel_ptr[5];
+    float* int8_scale_ptr[5];
 
     void setWeightPtr();
     void mallocWeights();
