@@ -83,6 +83,86 @@ __global__ void start_id_embedding_position_lookups_kernel(T* from_tensor,
     }
 }
 
+
+template<typename T>
+__global__ void start_id_embedding_position_lookups_kernel(T* from_tensor,
+                                                           int* output_ids,
+                                                           const T* embedding_table,
+                                                           const T* pos_table,
+                                                           const int* input_ids,
+                                                           const int start_step,
+                                                           const int length,
+                                                           const int max_length,
+                                                           const int batch_size,
+                                                           const int hidden_units,
+                                                           const int start_idx,
+                                                           const int end_idx)
+{
+    for (int index = blockIdx.x * blockDim.x + threadIdx.x; index < batch_size * length * hidden_units;
+         index += blockDim.x * gridDim.x) {
+        // transpose the input_ids [batch, length] (part of [batch, max_length]) to output_ids [length, batch]
+        if (index < batch_size * max_length) {
+            const int seq_id = index % max_length;
+            const int batch_id = index / max_length;
+            if (seq_id < length) {
+                output_ids[seq_id * batch_size + batch_id] = input_ids[index];
+            }
+            // output_ids[index] = input_ids[index];
+        }
+
+        // embedding lookup from word ids [batch, length] (part of [batch, max_length]) and [vocab, hidden] to generate
+        // embedding [batch, length, hidden]
+        const int word_index = index / hidden_units;
+        const int word_index_row = word_index / length;
+        const int word_index_col = word_index % length;
+        const int real_word_index = word_index_row * max_length + word_index_col;
+        const int step = start_step + word_index % length;
+        const int col_index = index % hidden_units;
+        const int idx = input_ids[real_word_index] * hidden_units + col_index;
+        if(idx >= start_idx && idx < end_idx) {
+            T embedding = embedding_table[idx - start_idx];
+            T pos_embed = pos_table == nullptr ? (T)0.f : pos_table[(step - 1) * hidden_units + col_index];
+            from_tensor[index] = embedding + pos_embed;
+        } else {
+            from_tensor[index] = (T)0.f;
+        }
+    }
+}
+
+template<typename T>
+__global__ void start_id_embedding_position_lookups_kernel(T* from_tensor,
+                                                           const T* embedding_table,
+                                                           const T* pos_table,
+                                                           const int* input_ids,
+                                                           const int start_step,
+                                                           const int length,
+                                                           const int max_length,
+                                                           const int batch_size,
+                                                           const int hidden_units,
+                                                           const int start_idx,
+                                                           const int end_idx)
+{
+    for (int index = blockIdx.x * blockDim.x + threadIdx.x; index < batch_size * length * hidden_units;
+         index += blockDim.x * gridDim.x) {
+        // embedding lookup from word ids [batch, length] (part of [batch, max_length]) and [vocab, hidden] to generate
+        // embedding [batch, length, hidden]
+        const int word_index = index / hidden_units;
+        const int word_index_row = word_index / length;
+        const int word_index_col = word_index % length;
+        const int real_word_index = word_index_row * max_length + word_index_col;
+        const int step = start_step + word_index % length;
+        const int col_index = index % hidden_units;
+        const int idx = input_ids[real_word_index] * hidden_units + col_index;
+        if(idx >= start_idx && idx < end_idx) {
+            T embedding = embedding_table[idx - start_idx];
+            T pos_embed = pos_table == nullptr ? (T)0.f : pos_table[(step - 1) * hidden_units + col_index];
+            from_tensor[index] = embedding + pos_embed;
+        } else {
+            from_tensor[index] = (T)0.f;
+        }
+    }
+}
+
 template<typename T>
 void invokeInputIdsEmbeddingLookupPosEncoding(T* from_tensor,
                                               int* output_ids,
@@ -94,32 +174,65 @@ void invokeInputIdsEmbeddingLookupPosEncoding(T* from_tensor,
                                               const int max_length,
                                               const int batch_size,
                                               const int hidden_units,
-                                              cudaStream_t stream)
+                                              cudaStream_t stream,
+                                              const int start_idx,
+                                              const int end_idx)
 {
     dim3 grid(min(batch_size * length, 65536));
     dim3 block(min(hidden_units, 512));
-    if (output_ids == nullptr) {
-        start_id_embedding_position_lookups_kernel<T><<<grid, block, 0, stream>>>(from_tensor,
-                                                                                  embedding_table,
-                                                                                  pos_table,
-                                                                                  input_ids,
-                                                                                  start_step,
-                                                                                  length,
-                                                                                  max_length,
-                                                                                  batch_size,
-                                                                                  hidden_units);
+    if (end_idx == 0) {
+        if (output_ids == nullptr) {
+            start_id_embedding_position_lookups_kernel<T><<<grid, block, 0, stream>>>(from_tensor,
+                                                                                    embedding_table,
+                                                                                    pos_table,
+                                                                                    input_ids,
+                                                                                    start_step,
+                                                                                    length,
+                                                                                    max_length,
+                                                                                    batch_size,
+                                                                                    hidden_units);
+        }
+        else {
+            start_id_embedding_position_lookups_kernel<T><<<grid, block, 0, stream>>>(from_tensor,
+                                                                                    output_ids,
+                                                                                    embedding_table,
+                                                                                    pos_table,
+                                                                                    input_ids,
+                                                                                    start_step,
+                                                                                    length,
+                                                                                    max_length,
+                                                                                    batch_size,
+                                                                                    hidden_units);
+        }
     }
     else {
-        start_id_embedding_position_lookups_kernel<T><<<grid, block, 0, stream>>>(from_tensor,
-                                                                                  output_ids,
-                                                                                  embedding_table,
-                                                                                  pos_table,
-                                                                                  input_ids,
-                                                                                  start_step,
-                                                                                  length,
-                                                                                  max_length,
-                                                                                  batch_size,
-                                                                                  hidden_units);
+        if (output_ids == nullptr) {
+            start_id_embedding_position_lookups_kernel<T><<<grid, block, 0, stream>>>(from_tensor,
+                                                                                    embedding_table,
+                                                                                    pos_table,
+                                                                                    input_ids,
+                                                                                    start_step,
+                                                                                    length,
+                                                                                    max_length,
+                                                                                    batch_size,
+                                                                                    hidden_units,
+                                                                                    start_idx,
+                                                                                    end_idx);
+        }
+        else {
+            start_id_embedding_position_lookups_kernel<T><<<grid, block, 0, stream>>>(from_tensor,
+                                                                                    output_ids,
+                                                                                    embedding_table,
+                                                                                    pos_table,
+                                                                                    input_ids,
+                                                                                    start_step,
+                                                                                    length,
+                                                                                    max_length,
+                                                                                    batch_size,
+                                                                                    hidden_units,
+                                                                                    start_idx,
+                                                                                    end_idx);
+        }
     }
 }
 
@@ -133,7 +246,9 @@ template void invokeInputIdsEmbeddingLookupPosEncoding(float* from_tensor,
                                                        const int max_length,
                                                        const int batch_size,
                                                        const int hidden_units,
-                                                       cudaStream_t stream);
+                                                       cudaStream_t stream,
+                                                       const int start_idx,
+                                                       const int end_idx);
 
 template void invokeInputIdsEmbeddingLookupPosEncoding(half* from_tensor,
                                                        int* output_ids,
@@ -145,7 +260,9 @@ template void invokeInputIdsEmbeddingLookupPosEncoding(half* from_tensor,
                                                        const int max_length,
                                                        const int batch_size,
                                                        const int hidden_units,
-                                                       cudaStream_t stream);
+                                                       cudaStream_t stream,
+                                                       const int start_idx,
+                                                       const int end_idx);
 
 #ifdef ENABLE_BF16
 template void invokeInputIdsEmbeddingLookupPosEncoding(__nv_bfloat16* from_tensor,
@@ -158,7 +275,9 @@ template void invokeInputIdsEmbeddingLookupPosEncoding(__nv_bfloat16* from_tenso
                                                        const int max_length,
                                                        const int batch_size,
                                                        const int hidden_units,
-                                                       cudaStream_t stream);
+                                                       cudaStream_t stream,
+                                                       const int start_idx,
+                                                       const int end_idx);
 #endif
 
 template<typename T>

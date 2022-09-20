@@ -3,13 +3,13 @@
 CUDA_LAUNCH_BLOCKING=1
 
 MPSIZE=8
-MAXSEQLEN=2200
+MAXSEQLEN=10000
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 
 #SAMPLING ARGS
 TEMP=1.0
 #If TOPK/TOPP are 0 it defaults to greedy sampling, top-k will also override top-p
-TOPK=1
+TOPK=5
 TOPP=0
 
 script_path=$(realpath $0)
@@ -24,9 +24,7 @@ DISTRIBUTED_ARGS="--nproc_per_node $MPSIZE \
                   --master_addr localhost \
                   --master_port $MASTER_PORT"
 
-source $1 # model
-
-CHECKPOINT_PATH="../model/ft_iter_0049300/8-gpu"
+CHECKPOINT_PATH="/mnt/yrfs/aohan/checkpoints/glm-130b-sat/49300"
 
 python -m torch.distributed.launch $DISTRIBUTED_ARGS $script_dir/glm_example.py \
        --time \
@@ -34,11 +32,12 @@ python -m torch.distributed.launch $DISTRIBUTED_ARGS $script_dir/glm_example.py 
        --top_p $TOPP \
        --temperature $TEMP \
        --len_penalty 1 \
+       --world_size $MPSIZE \
        --tensor_para_size $MPSIZE \
        --pipeline_para_size 1 \
        --data_type fp16 \
        --max_seq_len $MAXSEQLEN \
-       --output_len 200 \
+       --output_len 128 \
        --ckpt_path $CHECKPOINT_PATH \
-       --max_batch_size 8 \
+       --max_batch_size 4 \
        --sample_input_file $script_dir/input.txt

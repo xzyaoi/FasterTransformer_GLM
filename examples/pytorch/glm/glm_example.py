@@ -163,7 +163,6 @@ def main():
         if not raw_text.endswith('MASK]'):
             seq = seq + [tokenizer.get_command('eos')]
         seq = seq + [tokenizer.get_command('sop')]
-        # seq = seq[:1024]
         if args.local_rank == 0:
             print('raw text: {}\n'.format(raw_text))
             print(seq)
@@ -204,25 +203,25 @@ def main():
         print("[WARNING] Checkpoint file not found. Model loading is skipped.")
     if args.data_type == 'fp16':
         glm.half()
+    
+    glm.init_model(output_len,
+                    beam_width,
+                    top_k,
+                    top_p,
+                    beam_search_diversity_rate,
+                    temperature,
+                    len_penalty,
+                    repetition_penalty,
+                    random_seed)
         
     with torch.no_grad():
         # Generate tokens.
         tokens_batch = glm(start_ids,
-                        start_lengths,
-                        output_len,
-                        beam_width,
-                        top_k,
-                        top_p,
-                        beam_search_diversity_rate,
-                        temperature,
-                        len_penalty,
-                        repetition_penalty,
-                        random_seed,
-                        return_output_length,
-                        return_cum_log_probs)
+                            start_lengths,
+                            return_output_length,
+                            return_cum_log_probs)
         # # only a thread (rank 0) gets the output, while the others are supposed to return None.
         if tokens_batch is not None:
-
             if return_cum_log_probs > 0:
                 tokens_batch, _, cum_log_probs = tokens_batch
                 print('[INFO] Log probs of sentences:', cum_log_probs)
@@ -245,19 +244,24 @@ def main():
             iterations = 3
             time = timeit.default_timer()
             for i in range(iterations):
-                tokens_batch = glm(start_ids,
-                                start_lengths,
-                                output_len,
-                                beam_width,
-                                top_k,
-                                top_p,
-                                beam_search_diversity_rate,
-                                temperature,
-                                len_penalty,
-                                repetition_penalty,
-                                random_seed,
-                                return_output_length,
-                                return_cum_log_probs)
+                # torch.cuda.empty_cache()
+                # if args.local_rank == 0:
+                #     print(i,torch.cuda.memory_allocated() / 1024 / 1024)
+                
+                # it is ok for not re-initing model if params do not change
+                # glm.init_model(output_len,
+                #     beam_width,
+                #     top_k,
+                #     top_p,
+                #     beam_search_diversity_rate,
+                #     temperature,
+                #     len_penalty,
+                #     repetition_penalty,
+                #     random_seed)
+                glm(start_ids,
+                    start_lengths,
+                    return_output_length,
+                    return_cum_log_probs)
             time_elapsed = timeit.default_timer() - time
             if args.local_rank == 0:
                 print("[INFO] GPT length {} time costs: {:.2f} ms".format(output_len, time_elapsed * 1000 / iterations))

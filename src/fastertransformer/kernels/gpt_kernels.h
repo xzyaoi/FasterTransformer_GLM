@@ -35,7 +35,9 @@ void invokeInputIdsEmbeddingLookupPosEncoding(T* from_tensor,
                                               const int max_length,
                                               const int batch_size,
                                               const int hidden_units,
-                                              cudaStream_t stream);
+                                              cudaStream_t stream,
+                                              const int start_idx = 0,
+                                              const int end_idx = 0);
 
 template<typename T>
 struct inputIdsEmbeddingLookupPosEncodingSoftPromptParam {

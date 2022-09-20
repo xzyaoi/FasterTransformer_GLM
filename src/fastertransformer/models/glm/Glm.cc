@@ -440,43 +440,53 @@ void Glm<T>::encode(std::unordered_map<std::string, Tensor>* output_tensors,
                             stream_);
         sync_check_cuda_error();
 
-        if (input_tensors->count("prefix_soft_prompt_embedding")) {
-            inputIdsEmbeddingLookupPosEncodingSoftPromptParam<T> param;
-            param.from_tensor = context_decoder_input_buf_;
-            param.output_ids = output_ids_buf_;
-            param.input_lengths = tiled_input_lengths_buf_;
-            param.embedding_table = glm_weights->pre_decoder_embedding_table;
-            param.pos_table = glm_weights->position_encoding_table;
-            param.prefix_soft_prompt_embedding = input_tensors->at("prefix_soft_prompt_embedding").getPtr<float>();
-            param.prefix_soft_prompt_lengths = input_tensors->at("prefix_soft_prompt_lengths").getPtr<int>();
-            param.input_ids = tiled_input_ids_buf_;
-            param.start_step = 1;
-            param.max_input_length = max_input_length;
-            param.max_prefix_soft_prompt_length = max_prefix_soft_prompt_length;
-            param.batch_size = batch_size;
-            param.beam_width = beam_width;
-            param.hidden_units = hidden_units_;
-            param.stream = stream_;
+        // this part is not config with seperate embedding_table
 
-            invokeInputIdsEmbeddingLookupPosEncodingSoftPrompt(param);
-            sync_check_cuda_error();
-            max_input_length += max_prefix_soft_prompt_length;  // view soft_prompt as input
-        }
-        else {
-            invokeInputIdsEmbeddingLookupPosEncoding(context_decoder_input_buf_,
-                                                     output_ids_buf_,
-                                                     glm_weights->pre_decoder_embedding_table,
-                                                     glm_weights->position_encoding_table,
-                                                     tiled_input_ids_buf_,
-                                                     1,
-                                                     max_input_length,
-                                                     max_input_length,
-                                                     batch_size * beam_width,
-                                                     hidden_units_,
-                                                     stream_);
-            sync_check_cuda_error();
-        }
+        // if (input_tensors->count("prefix_soft_prompt_embedding")) {
+        //     inputIdsEmbeddingLookupPosEncodingSoftPromptParam<T> param;
+        //     param.from_tensor = context_decoder_input_buf_;
+        //     param.output_ids = output_ids_buf_;
+        //     param.input_lengths = tiled_input_lengths_buf_;
+        //     param.embedding_table = glm_weights->pre_decoder_embedding_table;
+        //     param.pos_table = glm_weights->position_encoding_table;
+        //     param.prefix_soft_prompt_embedding = input_tensors->at("prefix_soft_prompt_embedding").getPtr<float>();
+        //     param.prefix_soft_prompt_lengths = input_tensors->at("prefix_soft_prompt_lengths").getPtr<int>();
+        //     param.input_ids = tiled_input_ids_buf_;
+        //     param.start_step = 1;
+        //     param.max_input_length = max_input_length;
+        //     param.max_prefix_soft_prompt_length = max_prefix_soft_prompt_length;
+        //     param.batch_size = batch_size;
+        //     param.beam_width = beam_width;
+        //     param.hidden_units = hidden_units_;
+        //     param.stream = stream_;
 
+        //     invokeInputIdsEmbeddingLookupPosEncodingSoftPrompt(param);
+        //     sync_check_cuda_error();
+        //     max_input_length += max_prefix_soft_prompt_length;  // view soft_prompt as input
+        // }
+        // else {}
+        
+        // tensor_para_.rank_ * vocab_size_padded_ / tensor_para_.world_size_ * hidden_units_
+        invokeInputIdsEmbeddingLookupPosEncoding(context_decoder_input_buf_,
+                                                    output_ids_buf_,
+                                                    glm_weights->pre_decoder_embedding_table,
+                                                    glm_weights->position_encoding_table,
+                                                    tiled_input_ids_buf_,
+                                                    1,
+                                                    max_input_length,
+                                                    max_input_length,
+                                                    batch_size * beam_width,
+                                                    hidden_units_,
+                                                    stream_,
+                                                    tensor_para_.rank_ * vocab_size_padded_ / tensor_para_.world_size_ * hidden_units_,
+                                                    (tensor_para_.rank_ + 1) * vocab_size_padded_ / tensor_para_.world_size_ * hidden_units_);
+        sync_check_cuda_error();
+
+        if (tensor_para_.world_size_ > 1) {
+            ftNcclAllReduceSum(context_decoder_input_buf_, context_decoder_input_buf_, batch_size * beam_width * max_input_length * hidden_units_, tensor_para_, stream_);
+            sync_check_cuda_error();
+        }
+        
         invokeBuildGlmDecoderAttentionMask(
             input_attention_mask_, tiled_input_lengths_buf_, batch_size * beam_width, max_input_length, stream_);
         sync_check_cuda_error();
@@ -601,8 +611,15 @@ void Glm<T>::decode(std::unordered_map<std::string, Tensor>* output_tensors,
                                                     max_input_length,
                                                     batch_size * beam_width,
                                                     0,
-                                                    stream_);
+                                                    stream_,
+                                                    tensor_para_.rank_ * vocab_size_padded_ / tensor_para_.world_size_ * hidden_units_,
+                                                    (tensor_para_.rank_ + 1) * vocab_size_padded_ / tensor_para_.world_size_ * hidden_units_);
                 sync_check_cuda_error();
+
+                if (tensor_para_.world_size_ > 1) {
+                    ftNcclAllReduceSum(decoder_input_buf_ + hidden_units_offset, decoder_input_buf_ + hidden_units_offset, local_batch_size * beam_width * hidden_units_, tensor_para_, stream_);
+                    sync_check_cuda_error();
+                }
             }
             std::unordered_map<std::string, Tensor> decoder_input_tensors{
                 {"decoder_input",
@@ -683,8 +700,7 @@ void Glm<T>::decode(std::unordered_map<std::string, Tensor>* output_tensors,
                                     local_batch_size * beam_width,
                                     hidden_units_,  // k
                                     &alpha,
-                                    padded_embedding_kernel_ptr_
-                                        + tensor_para_.rank_ * local_vocab_size * hidden_units_,
+                                    padded_embedding_kernel_ptr_,
                                     sizeof(T) == 2 ? CUDA_R_16F : CUDA_R_32F,
                                     hidden_units_,  // k
                                     normed_decoder_output_buf_ + hidden_units_offset,
@@ -784,6 +800,34 @@ void Glm<T>::decode(std::unordered_map<std::string, Tensor>* output_tensors,
 
             }
         }
+    }
+
+    if (pipeline_para_.world_size_ > 1) {
+        const int src_indir_idx = (step - max_input_length) % 2;
+        const int tgt_indir_idx = 1 - src_indir_idx;
+        NCCLCHECK(ncclGroupStart());
+        ftNcclBroadCast(output_ids_buf_ + step * batch_size * beam_width,
+                        batch_size * beam_width,
+                        pipeline_para_.world_size_ - 1,
+                        pipeline_para_,
+                        stream_);
+
+        ftNcclBroadCast(
+            sequence_lengths, batch_size * beam_width, pipeline_para_.world_size_ - 1, pipeline_para_, stream_);
+
+        ftNcclBroadCast(
+            finished_buf_, batch_size * beam_width, pipeline_para_.world_size_ - 1, pipeline_para_, stream_);
+
+        if (beam_width > 1) {
+            ftNcclBroadCast(cache_indirections_[tgt_indir_idx],
+                            batch_size * beam_width * max_output_seq_len,
+                            pipeline_para_.world_size_ - 1,
+                            pipeline_para_,
+                            stream_);
+        }
+        NCCLCHECK(ncclGroupEnd());
+        check_cuda_error(cudaStreamSynchronize(stream_));
+        sync_check_cuda_error();
     }
 }
 
@@ -943,34 +987,6 @@ void Glm<T>::forward(std::unordered_map<std::string, Tensor>* output_tensors,
     encode(output_tensors, input_tensors, glm_weights);
     for (int step = max_input_length; step < (int)max_output_seq_len; step++) {
         decode(output_tensors, input_tensors, glm_weights, step);
-
-        if (pipeline_para_.world_size_ > 1) {
-            const int src_indir_idx = (step - max_input_length) % 2;
-            const int tgt_indir_idx = 1 - src_indir_idx;
-            NCCLCHECK(ncclGroupStart());
-            ftNcclBroadCast(output_ids_buf_ + step * batch_size * beam_width,
-                            batch_size * beam_width,
-                            pipeline_para_.world_size_ - 1,
-                            pipeline_para_,
-                            stream_);
-
-            ftNcclBroadCast(
-                sequence_lengths, batch_size * beam_width, pipeline_para_.world_size_ - 1, pipeline_para_, stream_);
-
-            ftNcclBroadCast(
-                finished_buf_, batch_size * beam_width, pipeline_para_.world_size_ - 1, pipeline_para_, stream_);
-
-            if (beam_width > 1) {
-                ftNcclBroadCast(cache_indirections_[tgt_indir_idx],
-                                batch_size * beam_width * max_output_seq_len,
-                                pipeline_para_.world_size_ - 1,
-                                pipeline_para_,
-                                stream_);
-            }
-            NCCLCHECK(ncclGroupEnd());
-            check_cuda_error(cudaStreamSynchronize(stream_));
-            sync_check_cuda_error();
-        }
         
         cudaD2Hcpy(h_finished_buf_, finished_buf_, batch_size * beam_width);
         uint sum = 0;

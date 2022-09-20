@@ -83,17 +83,39 @@ GlmOp::~GlmOp()
     delete ftglm;
 }
 
+void GlmOp::init_model(const int64_t output_len_,
+                        const int64_t beam_width_,
+                        const int64_t top_k_,
+                        const double top_p_,
+                        const double beam_search_diversity_rate_,
+                        const double temperature_,
+                        const double len_penalty_,
+                        const double repetition_penalty_,
+                        const int64_t random_seed_)
+{
+    output_len = output_len_;
+    beam_width = beam_width_;
+    top_k = top_k_;
+    top_p = top_p_;
+    beam_search_diversity_rate = beam_search_diversity_rate_;
+    temperature = temperature_;
+    len_penalty = len_penalty_;
+    repetition_penalty = repetition_penalty_;
+    random_seed = random_seed_;
+
+    ftglm->init_model((const size_t)output_len,
+                   (const size_t)beam_width,
+                   (const size_t)top_k,
+                   (const float)top_p,
+                   (const float)beam_search_diversity_rate,
+                   (const float)temperature,
+                   (const float)len_penalty,
+                   (const float)repetition_penalty,
+                   (const unsigned long long int)random_seed);
+}
+
 std::vector<th::Tensor> GlmOp::forward(th::Tensor input_ids,
                                                th::Tensor input_lengths,
-                                               const int64_t output_len,
-                                               const int64_t beam_width,
-                                               const int64_t top_k,
-                                               const double top_p,
-                                               const double beam_search_diversity_rate,
-                                               const double temperature,
-                                               const double len_penalty,
-                                               const double repetition_penalty,
-                                               const int64_t random_seed,
                                                const int64_t return_cum_log_probs)
 {
     CHECK_TH_CUDA(input_ids);
@@ -132,15 +154,6 @@ std::vector<th::Tensor> GlmOp::forward(th::Tensor input_ids,
                    parent_ids,
                    sequence_lengths,
                    cum_log_probs,
-                   (const size_t)output_len,
-                   (const size_t)beam_width,
-                   (const size_t)top_k,
-                   (const float)top_p,
-                   (const float)beam_search_diversity_rate,
-                   (const float)temperature,
-                   (const float)len_penalty,
-                   (const float)repetition_penalty,
-                   (const unsigned long long int)random_seed,
                    return_cum_log_probs);
     if (return_cum_log_probs > 0) {
         return std::vector<th::Tensor>{output_ids, sequence_lengths, cum_log_probs};
@@ -157,15 +170,6 @@ std::vector<th::Tensor> GlmOp::encode(th::Tensor input_ids,
                                                th::Tensor parent_ids,
                                                th::Tensor sequence_lengths,
                                                th::Tensor cum_log_probs,
-                                               const int64_t output_len,
-                                               const int64_t beam_width,
-                                               const int64_t top_k,
-                                               const double top_p,
-                                               const double beam_search_diversity_rate,
-                                               const double temperature,
-                                               const double len_penalty,
-                                               const double repetition_penalty,
-                                               const int64_t random_seed,
                                                const int64_t return_cum_log_probs)
 {
     CHECK_TH_CUDA(input_ids);
@@ -189,15 +193,6 @@ std::vector<th::Tensor> GlmOp::encode(th::Tensor input_ids,
                    parent_ids,
                    sequence_lengths,
                    cum_log_probs,
-                   (const size_t)output_len,
-                   (const size_t)beam_width,
-                   (const size_t)top_k,
-                   (const float)top_p,
-                   (const float)beam_search_diversity_rate,
-                   (const float)temperature,
-                   (const float)len_penalty,
-                   (const float)repetition_penalty,
-                   (const unsigned long long int)random_seed,
                    return_cum_log_probs);
 
     return std::vector<th::Tensor>{};
@@ -228,6 +223,7 @@ PYBIND11_MODULE(libth_glm, m) {
                                 int64_t,
                                 int64_t,
                                 std::vector<th::Tensor>>())
+        .def("init_model", &torch_ext::GlmOp::init_model)
         .def("forward", &torch_ext::GlmOp::forward)
         .def("encode", &torch_ext::GlmOp::encode)
         .def("decode", &torch_ext::GlmOp::decode);

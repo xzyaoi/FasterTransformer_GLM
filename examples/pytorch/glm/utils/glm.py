@@ -87,7 +87,7 @@ class GlmWeights(object):
         # After Transformer blocks
         self.w.append(torch.zeros(global_hidden_units))   # layernorm_gamma final_layernorm.weight
         self.w.append(torch.zeros(global_hidden_units))   # layernorm_beta  final_layernorm.bias
-        self.w.append(torch.zeros(vocab_size * global_hidden_units))   # embedding_table model.wte
+        self.w.append(torch.zeros(vocab_size * global_hidden_units // tensor_para_size))   # embedding_table model.wte
         # self.w.append(torch.zeros(vocab_size, global_hidden_units))   # embedding_kernel model.wte
 
         # Initialization
@@ -114,41 +114,61 @@ class GlmWeights(object):
     def load(self, ckpt_path, tensor_para_rank, pipeline_para_rank):
         if not os.path.exists(ckpt_path):
             return False
-        w = []
+
+        checkpoint_name = os.path.join(ckpt_path, 'mp_rank_{:02d}_model_states.pt'.format(tensor_para_rank))
+
+        module = torch.load(checkpoint_name, map_location='cpu')['module']
 
         # Load
-        w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.attention.query_key_value.weight.{}.bin".format(i, tensor_para_rank), dtype=np.half)) for i in range(self.layer_num)])
-        w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.attention.query_key_value.bias.{}.bin".format(i, tensor_para_rank), dtype=np.half)) for i in range(self.layer_num)])
-        w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.attention.dense.weight.{}.bin".format(i, tensor_para_rank), dtype=np.half)) for i in range(self.layer_num)])
-        w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.attention.dense.bias.{}.bin".format(i, tensor_para_rank), dtype=np.half)) for i in range(self.layer_num)])
-        w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.input_layernorm.bias.{}.bin".format(i, tensor_para_rank), dtype=np.half)) for i in range(self.layer_num)])
-        w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.input_layernorm.weight.{}.bin".format(i, tensor_para_rank), dtype=np.half)) for i in range(self.layer_num)])
-        w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.mlp.dense_h_to_4h.weight.{}.1.bin".format(i, tensor_para_rank), dtype=np.half)) for i in range(self.layer_num)])
-        w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.mlp.dense_h_to_4h.bias.{}.1.bin".format(i, tensor_para_rank), dtype=np.half)) for i in range(self.layer_num)])
-        w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.mlp.dense_h_to_4h.weight.{}.2.bin".format(i, tensor_para_rank), dtype=np.half)) for i in range(self.layer_num)])
-        w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.mlp.dense_h_to_4h.bias.{}.2.bin".format(i, tensor_para_rank), dtype=np.half)) for i in range(self.layer_num)])
-        w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.mlp.dense_4h_to_h.weight.{}.bin".format(i, tensor_para_rank), dtype=np.half)) for i in range(self.layer_num)])
-        w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.mlp.dense_4h_to_h.bias.{}.bin".format(i, tensor_para_rank), dtype=np.half)) for i in range(self.layer_num)])
-        w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.post_attention_layernorm.bias.{}.bin".format(i, tensor_para_rank), dtype=np.half)) for i in range(self.layer_num)])
-        w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.post_attention_layernorm.weight.{}.bin".format(i, tensor_para_rank), dtype=np.half)) for i in range(self.layer_num)])
+        num_attention_heads = 96
+        tensor_model_parallel_size = 8
+        layer_num = self.layer_num
 
-        w.append(torch.from_numpy(np.fromfile(ckpt_path + "/model.final_layernorm.weight.{}.bin".format(tensor_para_rank), dtype=np.half)))
-        w.append(torch.from_numpy(np.fromfile(ckpt_path + "/model.final_layernorm.bias.{}.bin".format(tensor_para_rank), dtype=np.half)))
-        w.append(torch.from_numpy(np.fromfile(ckpt_path + "/model.wte.bin", dtype=np.half)))
-        # w.append(torch.from_numpy(np.fromfile(ckpt_path + "/model.wte.bin", dtype=np.half)))
+        w = []
+        # Load
+
+        num_splits = 3
+
+        hidden_dim, local_dim = module['transformer.layers.0.attention.query_key_value.weight'].T.shape
+        local_dim = local_dim // num_splits
+        head_num = num_attention_heads
+        size_per_head = hidden_dim // head_num
+        head_num = head_num // tensor_model_parallel_size
+        w.extend([module[f'transformer.layers.{i}.attention.query_key_value.weight'].T.reshape(hidden_dim, head_num, num_splits, size_per_head).permute(0, 2, 1, 3).reshape(hidden_dim, 3, local_dim) for i in range(layer_num)])
+
+        local_dim = module['transformer.layers.0.attention.query_key_value.bias'].shape[0] // num_splits
+        head_num = num_attention_heads // tensor_model_parallel_size
+        size_per_head = local_dim // head_num
+        w.extend([module[f'transformer.layers.{i}.attention.query_key_value.bias'].reshape(head_num, num_splits, size_per_head).permute(1, 0, 2).reshape(3, local_dim) for i in range(layer_num)])
+
+        w.extend([module[f'transformer.layers.{i}.attention.dense.weight'].T for i in range(layer_num)])
+        w.extend([module[f'transformer.layers.{i}.attention.dense.bias'] for i in range(layer_num)])
+        w.extend([module[f'transformer.layers.{i}.input_layernorm.bias'] for i in range(layer_num)])
+        w.extend([module[f'transformer.layers.{i}.input_layernorm.weight'] for i in range(layer_num)])
+
+
+        local_dim = int(module['transformer.layers.0.mlp.dense_h_to_4h.weight'].shape[0] / 2)
+        w.extend([module[f'transformer.layers.{i}.mlp.dense_h_to_4h.weight'][:local_dim,:].T for i in range(layer_num)])
+        w.extend([module[f'transformer.layers.{i}.mlp.dense_h_to_4h.bias'][:local_dim] for i in range(layer_num)])
+        w.extend([module[f'transformer.layers.{i}.mlp.dense_h_to_4h.weight'][local_dim:,:].T for i in range(layer_num)])
+        w.extend([module[f'transformer.layers.{i}.mlp.dense_h_to_4h.bias'][local_dim:] for i in range(layer_num)])
+
+        w.extend([module[f'transformer.layers.{i}.mlp.dense_4h_to_h.weight'].T for i in range(layer_num)])
+        w.extend([module[f'transformer.layers.{i}.mlp.dense_4h_to_h.bias'] for i in range(layer_num)])
+        w.extend([module[f'transformer.layers.{i}.post_attention_layernorm.bias'] for i in range(layer_num)])
+        w.extend([module[f'transformer.layers.{i}.post_attention_layernorm.weight'] for i in range(layer_num)])
+
+        w.append(module[f'transformer.final_layernorm.weight'])
+        w.append(module[f'transformer.final_layernorm.bias'])
+        w.append(module[f'transformer.word_embeddings.weight'])
 
         # Reshape
-        try:
-            for i in range(len(w)):
-                if w[i].nelement() > 0:
+        for i in range(len(w)):
+            if w[i].nelement() > 0:
+                try:
                     self.w[i] = w[i].reshape(self.w[i].shape)
-
-        except RuntimeError:
-            raise RuntimeError(
-                "head_num, size_per_head, vocab_size, and max_seq_len must be the same as the ones during training.")
-
-        #transpose calibrate quantize the kernel
-        layer_num = self.layer_num
+                except:
+                    raise RuntimeError("shape error")
 
         return True
 
@@ -239,10 +259,8 @@ class Glm(nn.Module):
                                                            self.layer_num, self.vocab_size, self.rotary_embedding_dim, self.start_id, self.end_id,
                                                            self.tensor_para_size, self.pipeline_para_size, self.weights.w)
         self.build_model = True
-
-    def forward(self,
-                start_ids,
-                start_lengths,
+    
+    def init_model(self,
                 output_len,
                 beam_width=1,
                 top_k=1,
@@ -251,11 +269,28 @@ class Glm(nn.Module):
                 temperature=1.0,
                 len_penalty=1.0,
                 repetition_penalty=1.0,
-                random_seed=0,
-                return_output_length=False,
-                return_cum_log_probs=0):
+                random_seed=0):
         if not self.build_model:
             self.cuda()
+        self.output_len = output_len
+        self.beam_width = beam_width
+        self.top_k = top_k
+        self.model.init_model(output_len,
+                                beam_width,
+                                top_k,
+                                top_p,
+                                beam_search_diversity_rate,
+                                temperature,
+                                len_penalty,
+                                repetition_penalty,
+                                random_seed)
+
+    def forward(self,
+                start_ids,
+                start_lengths,
+                return_output_length=False,
+                return_cum_log_probs=0):
+        
         input_len = start_ids.size(1)
         assert input_len > 0, "input len must be larger than zero. For an unconditional case, use start_id as the first token."
 
@@ -263,52 +298,54 @@ class Glm(nn.Module):
         start_ids = start_ids.cuda(self.device)
         start_lengths = start_lengths.cuda(self.device)
         # outputs: output_ids, output_lengths, output_cum_log_probs (optional)
-        outputs = self.model.forward(start_ids,
-                                     start_lengths,
-                                     output_len,
-                                     beam_width,
-                                     top_k,
-                                     top_p,
-                                     beam_search_diversity_rate,
-                                     temperature,
-                                     len_penalty,
-                                     repetition_penalty,
-                                     random_seed,
-                                     return_cum_log_probs)
-        
-        # output_ids_buf = torch.zeros([start_ids.shape[0],beam_width,input_len + output_len],dtype=torch.int32).cuda()
-        # logits_buf = torch.zeros([start_ids.shape[0],beam_width,self.vocab_size],dtype=torch.float32).cuda()
-        
-        # self.model.encode(start_ids,
-        #                     start_lengths,
-        #                     output_ids_buf,
-        #                     logits_buf,
-        #                     output_len,
-        #                     beam_width,
-        #                     top_k,
-        #                     top_p,
-        #                     beam_search_diversity_rate,
-        #                     temperature,
-        #                     len_penalty,
-        #                     repetition_penalty,
-        #                     random_seed,
-        #                     return_cum_log_probs)
-        # self.model.decode(input_len)
-        # output_ids_buf[0][0][input_len] += logits_buf.argmax()
-        # self.model.decode(input_len+1)
 
-        if return_cum_log_probs == 0:
-            output_ids, output_lengths = outputs
-        else:
-            output_ids, output_lengths, output_cum_log_probs = outputs
+        # outputs = self.model.forward(start_ids,
+        #                              start_lengths,
+        #                              return_cum_log_probs)
+        
+        output_ids = torch.zeros([input_len + self.output_len,start_ids.shape[0],self.beam_width],dtype=torch.int32).cuda()
+        output_ids_buf = torch.zeros([input_len + self.output_len,start_ids.shape[0],self.beam_width],dtype=torch.int32).cuda()
+        logits_buf = torch.zeros([start_ids.shape[0],self.beam_width,self.vocab_size],dtype=torch.float32).cuda()
+        parent_ids = torch.zeros([input_len + self.output_len,start_ids.shape[0],self.beam_width],dtype=torch.int32).cuda()
+        sequence_lengths = torch.zeros([start_ids.shape[0],self.beam_width],dtype=torch.int32).cuda()
+        cum_log_probs = torch.zeros([start_ids.shape[0],self.beam_width],dtype=torch.float32).cuda()
+        
+        self.model.encode(start_ids,
+                            start_lengths,
+                            output_ids_buf,
+                            logits_buf,
+                            output_ids,
+                            parent_ids,
+                            sequence_lengths,
+                            cum_log_probs,
+                            return_cum_log_probs)
+        
+        i = input_len
+        self.model.decode(i)
+        for j in range(start_ids.shape[0]):
+            output_ids_buf[i][j][0] += logits_buf[j][0].topk(start_ids.shape[0]).indices[j]
+            sequence_lengths[j][0] += 1
+        
+        for i in range(input_len+1,input_len+self.output_len):
+            self.model.decode(i)
+            for j in range(start_ids.shape[0]):
+                output_ids_buf[i][j][0] += logits_buf[j][0].argmax()
+                sequence_lengths[j][0] += 1
 
-        if return_output_length:
-            if return_cum_log_probs > 0:
-                return output_ids, output_lengths, output_cum_log_probs
-            else:
-                return output_ids, output_lengths
-        else:
-            return output_ids
+        return output_ids_buf.permute(1,2,0)
+
+        # if return_cum_log_probs == 0:
+        #     output_ids, output_lengths = outputs
+        # else:
+        #     output_ids, output_lengths, output_cum_log_probs = outputs
+
+        # if return_output_length:
+        #     if return_cum_log_probs > 0:
+        #         return output_ids, output_lengths, output_cum_log_probs
+        #     else:
+        #         return output_ids, output_lengths
+        # else:
+        #     return output_ids
 
     def set_input_tensor(self, input_tensor):
         """Set input tensor to be used instead of forward()'s input.

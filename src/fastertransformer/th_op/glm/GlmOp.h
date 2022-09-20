@@ -61,6 +61,15 @@ using std::vector;
 class IFGlm {
 public:
     virtual ~IFGlm() {}
+    virtual void init_model(const size_t request_output_len_,
+                    const size_t beam_width_,
+                    const size_t top_k_,
+                    const float top_p_,
+                    const float beam_search_diversity_rate_,
+                    const float temperature_,
+                    const float len_penalty_,
+                    const float repetition_penalty_,
+                    const unsigned long long int query_random_seed_) = 0;
     virtual void forward(th::Tensor& input_ids,
                          th::Tensor& input_lengths,
                          th::Tensor& output_ids,
@@ -69,15 +78,6 @@ public:
                          th::Tensor& parent_ids,
                          th::Tensor& sequence_lengths,
                          th::Tensor& cum_log_probs,
-                         const size_t request_output_len,
-                         const size_t beam_width,
-                         const size_t top_k,
-                         const float top_p,
-                         const float beam_search_diversity_rate,
-                         const float temperature,
-                         const float len_penalty,
-                         const float repetition_penalty,
-                         const unsigned long long int random_seed,
                          const int return_cum_log_probs = 0) = 0;
     virtual void encode(th::Tensor& input_ids,
                         th::Tensor& input_lengths,
@@ -87,15 +87,6 @@ public:
                         th::Tensor& parent_ids,
                         th::Tensor& sequence_lengths,
                         th::Tensor& cum_log_probs,
-                        const size_t request_output_len,
-                        const size_t beam_width,
-                        const size_t top_k,
-                        const float top_p,
-                        const float beam_search_diversity_rate,
-                        const float temperature,
-                        const float len_penalty,
-                        const float repetition_penalty,
-                        const unsigned long long int random_seed,
                         const int return_cum_log_probs = 0) = 0;
     virtual void decode(const size_t step) = 0;
 };
@@ -174,12 +165,6 @@ public:
         glm_weights_.pre_decoder_embedding_table = get_ptr<T>(weights_[14 * layer_num_ + 2]);
         glm_weights_.post_decoder_embedding.kernel = get_ptr<T>(weights_[14 * layer_num_ + 2]);
 
-        // std::cout << 111 << std::endl;
-        // std::cout << weights_[14 * layer_num_ + 2][0] << std::endl;
-        // std::cout << weights_[14 * layer_num_ + 2].cpu().data_ptr<at::Half>()[0] << std::endl;
-        // std::cout << glm_weights_.pre_decoder_embedding_table << std::endl;
-        // std::cout << 222 << std::endl;
-
         int device_id = 0;
         ft::check_cuda_error(cudaGetDevice(&device_id));
         ft::check_cuda_error(cudaGetDeviceProperties(&prop_, device_id));
@@ -210,25 +195,32 @@ public:
         pipeline_para_comm_ = h_->getcomm(pipeline_para_rank_, pipeline_para_size_, pipeline_para_name);
     }
 
-    void forward(th::Tensor& input_ids,
-                 th::Tensor& input_lengths,
-                 th::Tensor& output_ids,
-                 th::Tensor& output_ids_buf,
-                 th::Tensor& logits_buf,
-                 th::Tensor& parent_ids,
-                 th::Tensor& sequence_lengths,
-                 th::Tensor& cum_log_probs,
-                 const size_t request_output_len,
-                 const size_t beam_width,
-                 const size_t top_k,
-                 const float top_p,
-                 const float beam_search_diversity_rate,
-                 const float temperature,
-                 const float len_penalty,
-                 const float repetition_penalty,
-                 const unsigned long long int query_random_seed,
-                 const int return_cum_log_probs = 0) override
-    {
+    void init_model(const size_t request_output_len_,
+                    const size_t beam_width_,
+                    const size_t top_k_,
+                    const float top_p_,
+                    const float beam_search_diversity_rate_,
+                    const float temperature_,
+                    const float len_penalty_,
+                    const float repetition_penalty_,
+                    const unsigned long long int query_random_seed_){
+        
+        if(model_init == true) {
+            delete glm;
+            delete cublas_wrapper;
+            delete allocator;
+        }
+
+        request_output_len = request_output_len_;
+        beam_width = beam_width_;
+        top_k = top_k_;
+        top_p = top_p_;
+        beam_search_diversity_rate = beam_search_diversity_rate_;
+        temperature = temperature_;
+        len_penalty = len_penalty_;
+        repetition_penalty = repetition_penalty_;
+        query_random_seed = query_random_seed_;
+
         auto stream = at::cuda::getCurrentCUDAStream().stream();
         cublasHandle_t cublasHandle = at::cuda::getCurrentCUDABlasHandle();
         cublasSetStream(cublasHandle, stream);
@@ -242,10 +234,6 @@ public:
         else if (std::is_same<T, float>::value) {
             cublas_wrapper->setFP32GemmConfig();
         }
-
-        const size_t request_batch_size = (size_t)input_ids.size(0);
-        const size_t max_input_length = (size_t)input_ids.size(1);
-        const int total_output_len = (int)(max_input_length + request_output_len);
 
         ft::NcclParam tensor_para(tensor_para_rank_, tensor_para_size_, tensor_para_comm_);
         ft::NcclParam pipeline_para(pipeline_para_rank_, pipeline_para_size_, pipeline_para_comm_);
@@ -279,6 +267,23 @@ public:
                           false,
                           &prop_);
         
+        model_init = true;
+    }
+
+    void forward(th::Tensor& input_ids,
+                 th::Tensor& input_lengths,
+                 th::Tensor& output_ids,
+                 th::Tensor& output_ids_buf,
+                 th::Tensor& logits_buf,
+                 th::Tensor& parent_ids,
+                 th::Tensor& sequence_lengths,
+                 th::Tensor& cum_log_probs,
+                 const int return_cum_log_probs = 0) override
+    {
+        const size_t request_batch_size = (size_t)input_ids.size(0);
+        const size_t max_input_length = (size_t)input_ids.size(1);
+        const int total_output_len = (int)(max_input_length + request_output_len);
+
         std::unordered_map<std::string, ft::Tensor> input_tensors = std::unordered_map<std::string, ft::Tensor>{
             {"input_ids",
              ft::Tensor{ft::MEMORY_GPU,
@@ -370,7 +375,6 @@ public:
             std::cout << "Runtime error" << std::endl;
             ft::FT_CHECK(false);
         }
-
     }
 
     void encode(th::Tensor& input_ids,
@@ -381,67 +385,12 @@ public:
                  th::Tensor& parent_ids,
                  th::Tensor& sequence_lengths,
                  th::Tensor& cum_log_probs,
-                 const size_t request_output_len,
-                 const size_t beam_width,
-                 const size_t top_k,
-                 const float top_p,
-                 const float beam_search_diversity_rate,
-                 const float temperature,
-                 const float len_penalty,
-                 const float repetition_penalty,
-                 const unsigned long long int query_random_seed,
                  const int return_cum_log_probs = 0) override
     {
-        auto stream = at::cuda::getCurrentCUDAStream().stream();
-        cublasHandle_t cublasHandle = at::cuda::getCurrentCUDABlasHandle();
-        cublasSetStream(cublasHandle, stream);
-        allocator = new ft::Allocator<ft::AllocatorType::TH>();
-        cublas_wrapper = new ft::cublasMMWrapper(
-            cublasHandle, cublasltHandle_, stream, cublas_algo_map_, cublas_wrapper_mutex_, allocator);
+        const size_t request_batch_size = (size_t)input_ids.size(0);
+        const size_t max_input_length = (size_t)input_ids.size(1);
+        const int total_output_len = (int)(max_input_length + request_output_len);
 
-        if (std::is_same<T, half>::value) {
-            cublas_wrapper->setGemmConfig(CUDA_R_16F, CUDA_R_16F, CUDA_R_16F, CUDA_R_32F);
-        }
-        else if (std::is_same<T, float>::value) {
-            cublas_wrapper->setFP32GemmConfig();
-        }
-
-        request_batch_size = (size_t)input_ids.size(0);
-        max_input_length = (size_t)input_ids.size(1);
-        total_output_len = (int)(max_input_length + request_output_len);
-
-        ft::NcclParam tensor_para(tensor_para_rank_, tensor_para_size_, tensor_para_comm_);
-        ft::NcclParam pipeline_para(pipeline_para_rank_, pipeline_para_size_, pipeline_para_comm_);
-
-        random_seed = query_random_seed;
-
-        glm = new ft::Glm<T>(0,  // max_batch_size, FT will adjust the buffer automatically.
-                          0,  // max_seq_len, FT will adjust the buffer automatically.
-                          0,  // max_input_len, FT will adjust the buffer automatically.
-                          beam_width,
-                          head_num_,
-                          size_per_head_,
-                          inter_size_,
-                          layer_num_,
-                          vocab_size_,
-                          -rotary_embedding_dim_,
-                          start_id_,
-                          end_id_,
-                          0.0f,
-                          top_k,
-                          top_p,
-                          random_seed,
-                          temperature,
-                          len_penalty,
-                          repetition_penalty,
-                          tensor_para,
-                          pipeline_para,
-                          stream,
-                          cublas_wrapper,
-                          allocator,
-                          false,
-                          &prop_);
-        
         input_tensors = std::unordered_map<std::string, ft::Tensor>{
             {"input_ids",
              ft::Tensor{ft::MEMORY_GPU,
@@ -563,6 +512,17 @@ private:
     const int start_id_;
     const int end_id_;
 
+    bool model_init = false;
+    size_t request_output_len;
+    size_t beam_width;
+    size_t top_k;
+    float top_p;
+    float beam_search_diversity_rate;
+    float temperature;
+    float len_penalty;
+    float repetition_penalty;
+    unsigned long long int query_random_seed;
+
     size_t tensor_para_size_;
     size_t pipeline_para_size_;
 
@@ -617,17 +577,18 @@ public:
 
     ~GlmOp();
 
+    void init_model(const int64_t output_len,
+                    const int64_t beam_width,
+                    const int64_t top_k,
+                    const double top_p,
+                    const double beam_search_diversity_rate,
+                    const double temperature,
+                    const double len_penalty,
+                    const double repetition_penalty,
+                    const int64_t random_seed);
+    
     vector<th::Tensor> forward(th::Tensor input_ids,
                                th::Tensor input_lengths,
-                               const int64_t output_len,
-                               const int64_t beam_width,
-                               const int64_t top_k,
-                               const double top_p,
-                               const double beam_search_diversity_rate,
-                               const double temperature,
-                               const double len_penalty,
-                               const double repetition_penalty,
-                               const int64_t random_seed,
                                const int64_t return_cum_log_probs);
     
     std::vector<th::Tensor> encode(th::Tensor input_ids,
@@ -638,15 +599,6 @@ public:
                                     th::Tensor parent_ids,
                                     th::Tensor sequence_lengths,
                                     th::Tensor cum_log_probs,
-                                    const int64_t output_len,
-                                    const int64_t beam_width,
-                                    const int64_t top_k,
-                                    const double top_p,
-                                    const double beam_search_diversity_rate,
-                                    const double temperature,
-                                    const double len_penalty,
-                                    const double repetition_penalty,
-                                    const int64_t random_seed,
                                     const int64_t return_cum_log_probs);
     
     std::vector<th::Tensor> decode(const int64_t step);
@@ -657,6 +609,16 @@ private:
     IFGlm* ftglm;
     HackNCCLGroup* h;
     std::vector<th::Tensor> weights;
+
+    size_t output_len;
+    size_t beam_width;
+    size_t top_k;
+    float top_p;
+    float beam_search_diversity_rate;
+    float temperature;
+    float len_penalty;
+    float repetition_penalty;
+    unsigned long long int random_seed;
 };
 
 }  // namespace torch_ext

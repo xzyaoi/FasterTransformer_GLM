@@ -154,6 +154,81 @@ __global__ void embeddingLookup(T* from_tensor,
     }
 }
 
+
+template<typename T>
+__global__ void embeddingLookupPosEncoding(T* from_tensor,
+                                           const T* embedding_table,
+                                           const T* position_encoding,
+                                           const int* all_ids,
+                                           const int* input_lengths,
+                                           const int local_batch_size,
+                                           const int hidden_units,
+                                           const int step,
+                                           const int max_input_length,
+                                           const int batch_size,
+                                           const int ite,
+                                           const T scale,
+                                           const int start_idx,
+                                           const int end_idx)
+{
+    // 1. lookup from embedding table
+    // 2. multiply scale
+    // 3. add the position encoding
+    const int id_offset = step * batch_size + ite * local_batch_size;
+
+    for (int index = blockIdx.x * blockDim.x + threadIdx.x; index < local_batch_size * hidden_units;
+         index += blockDim.x * gridDim.x) {
+        const int row_index = index / hidden_units;
+        const int col_index = index % hidden_units;
+        const int step_offset = input_lengths == nullptr ?
+                                    step * hidden_units :
+                                    (step - max_input_length + input_lengths[row_index]) * hidden_units;
+        const int idx = all_ids[id_offset + row_index] * hidden_units + col_index;
+        if (idx >= start_idx && idx < end_idx) {
+            T val = embedding_table[idx - start_idx] * scale;
+            val = val + position_encoding[step_offset + col_index];
+            from_tensor[index] = val;
+        }
+        else {
+            from_tensor[index] = (T)0.f;
+        }
+    }
+}
+
+// No aboluste position embedding
+template<typename T>
+__global__ void embeddingLookup(T* from_tensor,
+                                const T* embedding_table,
+                                const int* all_ids,
+                                const int local_batch_size,
+                                const int hidden_units,
+                                const int step,
+                                const int max_input_length,
+                                const int batch_size,
+                                const int ite,
+                                const T scale,
+                                const int start_idx,
+                                const int end_idx)
+{
+    // 1. lookup from embedding table
+    // 2. multiply scale
+    const int id_offset = step * batch_size + ite * local_batch_size;
+
+    for (int index = blockIdx.x * blockDim.x + threadIdx.x; index < local_batch_size * hidden_units;
+         index += blockDim.x * gridDim.x) {
+        const int row_index = index / hidden_units;
+        const int col_index = index % hidden_units;
+        const int idx = all_ids[id_offset + row_index] * hidden_units + col_index;
+        if (idx >= start_idx && idx < end_idx) {
+            T val = embedding_table[idx - start_idx] * scale;
+            from_tensor[index] = val;
+        }
+        else {
+            from_tensor[index] = (T)0.f;
+        }
+    }
+}
+
 template<typename T>
 void invokeEmbeddingLookupPosEncoding(T* from_tensor,
                                       const T* embedding_table,
@@ -167,35 +242,71 @@ void invokeEmbeddingLookupPosEncoding(T* from_tensor,
                                       const int max_input_length,
                                       const int batch_size,
                                       const int ite,
-                                      cudaStream_t stream)
+                                      cudaStream_t stream,
+                                      const int start_idx,
+                                      const int end_idx)
 {
     dim3 grid(min(local_batch_size, 65536));
     dim3 block(min(hidden_units, 1024));
-    if (position_encoding != nullptr) {
-        embeddingLookupPosEncoding<T><<<grid, block, 0, stream>>>(from_tensor,
-                                                                  embedding_table,
-                                                                  position_encoding,
-                                                                  all_ids,
-                                                                  input_lengths,
-                                                                  local_batch_size,
-                                                                  hidden_units,
-                                                                  step,
-                                                                  max_input_length,
-                                                                  batch_size,
-                                                                  ite,
-                                                                  scale);
+    if(end_idx == 0) {
+        if (position_encoding != nullptr) {
+            embeddingLookupPosEncoding<T><<<grid, block, 0, stream>>>(from_tensor,
+                                                                    embedding_table,
+                                                                    position_encoding,
+                                                                    all_ids,
+                                                                    input_lengths,
+                                                                    local_batch_size,
+                                                                    hidden_units,
+                                                                    step,
+                                                                    max_input_length,
+                                                                    batch_size,
+                                                                    ite,
+                                                                    scale);
+        }
+        else {
+            embeddingLookup<T><<<grid, block, 0, stream>>>(from_tensor,
+                                                        embedding_table,
+                                                        all_ids,
+                                                        local_batch_size,
+                                                        hidden_units,
+                                                        step,
+                                                        max_input_length,
+                                                        batch_size,
+                                                        ite,
+                                                        scale);
+        }
     }
     else {
-        embeddingLookup<T><<<grid, block, 0, stream>>>(from_tensor,
-                                                       embedding_table,
-                                                       all_ids,
-                                                       local_batch_size,
-                                                       hidden_units,
-                                                       step,
-                                                       max_input_length,
-                                                       batch_size,
-                                                       ite,
-                                                       scale);
+        if (position_encoding != nullptr) {
+            embeddingLookupPosEncoding<T><<<grid, block, 0, stream>>>(from_tensor,
+                                                                    embedding_table,
+                                                                    position_encoding,
+                                                                    all_ids,
+                                                                    input_lengths,
+                                                                    local_batch_size,
+                                                                    hidden_units,
+                                                                    step,
+                                                                    max_input_length,
+                                                                    batch_size,
+                                                                    ite,
+                                                                    scale,
+                                                                    start_idx,
+                                                                    end_idx);
+        }
+        else {
+            embeddingLookup<T><<<grid, block, 0, stream>>>(from_tensor,
+                                                        embedding_table,
+                                                        all_ids,
+                                                        local_batch_size,
+                                                        hidden_units,
+                                                        step,
+                                                        max_input_length,
+                                                        batch_size,
+                                                        ite,
+                                                        scale,
+                                                        start_idx,
+                                                        end_idx);
+        }
     }
 }
 
@@ -211,7 +322,9 @@ template void invokeEmbeddingLookupPosEncoding(float* from_tensor,
                                                const int max_input_length,
                                                const int batch_size,
                                                const int ite,
-                                               cudaStream_t stream);
+                                               cudaStream_t stream,
+                                               const int start_idx,
+                                               const int end_idx);
 
 template void invokeEmbeddingLookupPosEncoding(half* from_tensor,
                                                const half* embedding_table,
@@ -225,7 +338,9 @@ template void invokeEmbeddingLookupPosEncoding(half* from_tensor,
                                                const int max_input_length,
                                                const int batch_size,
                                                const int ite,
-                                               cudaStream_t stream);
+                                               cudaStream_t stream,
+                                               const int start_idx,
+                                               const int end_idx);
 
 #ifdef ENABLE_BF16
 template void invokeEmbeddingLookupPosEncoding(__nv_bfloat16* from_tensor,
@@ -240,7 +355,9 @@ template void invokeEmbeddingLookupPosEncoding(__nv_bfloat16* from_tensor,
                                                const int max_input_length,
                                                const int batch_size,
                                                const int ite,
-                                               cudaStream_t stream);
+                                               cudaStream_t stream,
+                                               const int start_idx,
+                                               const int end_idx);
 #endif
 
 template<typename T>
