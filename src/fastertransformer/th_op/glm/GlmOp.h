@@ -72,6 +72,7 @@ public:
                     const unsigned long long int query_random_seed_) = 0;
     virtual void forward(th::Tensor& input_ids,
                          th::Tensor& input_lengths,
+                         th::Tensor& mask_positions,
                          th::Tensor& output_ids,
                          th::Tensor& output_ids_buf,
                          th::Tensor& logits_buf,
@@ -81,6 +82,7 @@ public:
                          const int return_cum_log_probs = 0) = 0;
     virtual void encode(th::Tensor& input_ids,
                         th::Tensor& input_lengths,
+                        th::Tensor& mask_positions,
                         th::Tensor& output_ids_buf,
                         th::Tensor& logits_buf,
                         th::Tensor& output_ids,
@@ -272,6 +274,7 @@ public:
 
     void forward(th::Tensor& input_ids,
                  th::Tensor& input_lengths,
+                 th::Tensor& mask_positions,
                  th::Tensor& output_ids,
                  th::Tensor& output_ids_buf,
                  th::Tensor& logits_buf,
@@ -293,6 +296,9 @@ public:
             {"input_lengths",
              ft::Tensor{
                  ft::MEMORY_GPU, ft::TYPE_INT32, std::vector<size_t>{request_batch_size}, get_ptr<int>(input_lengths)}},
+            {"mask_positions",
+             ft::Tensor{
+                 ft::MEMORY_GPU, ft::TYPE_INT32, std::vector<size_t>{request_batch_size}, get_ptr<int>(mask_positions)}},
             {"max_output_seq_len",
              ft::Tensor{ft::MEMORY_CPU, ft::TYPE_INT32, std::vector<size_t>{1}, &total_output_len}}};
 
@@ -379,6 +385,7 @@ public:
 
     void encode(th::Tensor& input_ids,
                  th::Tensor& input_lengths,
+                 th::Tensor& mask_positions,
                  th::Tensor& output_ids,
                  th::Tensor& output_ids_buf,
                  th::Tensor& logits_buf,
@@ -400,6 +407,9 @@ public:
             {"input_lengths",
              ft::Tensor{
                  ft::MEMORY_GPU, ft::TYPE_INT32, std::vector<size_t>{request_batch_size}, get_ptr<int>(input_lengths)}},
+            {"mask_positions",
+             ft::Tensor{
+                 ft::MEMORY_GPU, ft::TYPE_INT32, std::vector<size_t>{request_batch_size}, get_ptr<int>(mask_positions)}},
             {"max_output_seq_len",
              ft::Tensor{ft::MEMORY_CPU, ft::TYPE_INT32, std::vector<size_t>{1}, &total_output_len}}};
 
@@ -589,10 +599,12 @@ public:
     
     vector<th::Tensor> forward(th::Tensor input_ids,
                                th::Tensor input_lengths,
+                               th::Tensor mask_positions,
                                const int64_t return_cum_log_probs);
     
     std::vector<th::Tensor> encode(th::Tensor input_ids,
                                     th::Tensor input_lengths,
+                                    th::Tensor mask_positions,
                                     th::Tensor output_ids_buf,
                                     th::Tensor logits_buf,
                                     th::Tensor output_ids,

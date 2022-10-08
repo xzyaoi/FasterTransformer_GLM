@@ -613,6 +613,42 @@ void invokeTileGptInputs(int* tiled_input_ids,
         tiled_input_ids, tiled_input_lengths, input_ids, input_lengths, max_input_length);
 }
 
+
+__global__ void tileGptInputs(int* tiled_input_ids,
+                              int* tiled_input_lengths,
+                              int* tiled_mask_positions,
+                              const int* input_ids,
+                              const int* input_lengths,
+                              const int* mask_positions,
+                              const int max_input_length)
+{
+    if (threadIdx.x == 0) {
+        tiled_input_lengths[blockIdx.x * gridDim.y + blockIdx.y] = input_lengths[blockIdx.x];
+        tiled_mask_positions[blockIdx.x * gridDim.y + blockIdx.y] = mask_positions[blockIdx.x];
+    }
+    for (int index = threadIdx.x; index < max_input_length; index += blockDim.x) {
+        tiled_input_ids[(blockIdx.x * gridDim.y + blockIdx.y) * max_input_length + index] =
+            input_ids[blockIdx.x * max_input_length + index];
+    }
+}
+
+void invokeTileGptInputs(int* tiled_input_ids,
+                         int* tiled_input_lengths,
+                         int* tiled_mask_positions,
+                         const int* input_ids,
+                         const int* input_lengths,
+                         const int* mask_positions,
+                         const int batch_size,
+                         const int beam_width,
+                         const int max_input_length,
+                         cudaStream_t stream)
+{
+    dim3 grid(batch_size, beam_width);
+    dim3 block(min(1024, max_input_length));
+    tileGptInputs<<<grid, block, 0, stream>>>(
+        tiled_input_ids, tiled_input_lengths, tiled_mask_positions, input_ids, input_lengths, mask_positions, max_input_length);
+}
+
 bool hasDiffRuntimeArgs(const std::unordered_map<std::string, Tensor>* input_tensors)
 {
     //      runtime_top_k [1] or [batch_size] on cpu, optional.

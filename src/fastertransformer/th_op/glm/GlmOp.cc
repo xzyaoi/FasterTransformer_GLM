@@ -116,6 +116,7 @@ void GlmOp::init_model(const int64_t output_len_,
 
 std::vector<th::Tensor> GlmOp::forward(th::Tensor input_ids,
                                                th::Tensor input_lengths,
+                                               th::Tensor mask_positions,
                                                const int64_t return_cum_log_probs)
 {
     CHECK_TH_CUDA(input_ids);
@@ -148,6 +149,7 @@ std::vector<th::Tensor> GlmOp::forward(th::Tensor input_ids,
 
     ftglm->forward(input_ids,
                    input_lengths,
+                   mask_positions,
                    output_ids,
                    output_ids_buf,
                    logits_buf,
@@ -164,6 +166,7 @@ std::vector<th::Tensor> GlmOp::forward(th::Tensor input_ids,
 
 std::vector<th::Tensor> GlmOp::encode(th::Tensor input_ids,
                                                th::Tensor input_lengths,
+                                               th::Tensor mask_positions,
                                                th::Tensor output_ids_buf,
                                                th::Tensor logits_buf,
                                                th::Tensor output_ids,
@@ -187,6 +190,7 @@ std::vector<th::Tensor> GlmOp::encode(th::Tensor input_ids,
 
     ftglm->encode(input_ids,
                    input_lengths,
+                   mask_positions,
                    output_ids,
                    output_ids_buf,
                    logits_buf,

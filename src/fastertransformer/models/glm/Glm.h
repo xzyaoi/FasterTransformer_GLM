@@ -86,6 +86,7 @@ protected:
 
     int* tiled_input_ids_buf_;
     int* tiled_input_lengths_buf_;
+    int* tiled_mask_positions_buf_;
     int* transposed_output_ids_buf_;
     int* output_ids_buf_;
     int* parent_ids_buf_;

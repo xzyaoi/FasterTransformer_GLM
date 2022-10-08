@@ -28,6 +28,10 @@ import sys
 import argparse
 import timeit
 import torch
+
+torch.manual_seed(42)
+
+
 dir_path = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(dir_path + "/../../..")
 from examples.pytorch.glm.utils.glm import Glm
@@ -142,10 +146,10 @@ def main():
 
     def encode(raw_text):
         # add MASK
-        generation_mask = '[gMASK]'
-        assert '[MASK]' not in raw_text, 'should not mix [MASK] and [gMASK]'
+        generation_mask = "[MASK]" if "[MASK]" in raw_text else "[gMASK]"
+        use_gmask = "[MASK]" not in raw_text
 
-        mask_pattern = r'\[g?MASK\]'
+        mask_pattern = r"\[g?MASK\]"
         text_list = re.split(mask_pattern, raw_text)
         pattern_list = re.compile(mask_pattern).findall(raw_text)
         seq = []
@@ -168,8 +172,13 @@ def main():
             print(seq)
         if len(seq) > args.max_seq_len:
             raise ValueError('text too long.')
-        return seq
+        return torch.IntTensor(seq), -1 if use_gmask else seq.index(tokenizer.get_command(generation_mask))
 
+    def get_ids(contexts):
+        start_ids, mask_positions = zip(*[encode(c) for c in contexts])
+        start_ids = pad_sequence(start_ids, batch_first=True, padding_value=end_id)
+        start_lengths = torch.IntTensor([len(ids) for ids in start_ids])
+        return start_ids, start_lengths, torch.IntTensor(mask_positions)
 
     # Inputs
     contexts = []
@@ -178,17 +187,8 @@ def main():
             contexts = f.read().splitlines()
             batch_size = min(len(contexts), max_batch_size)
         contexts = contexts[:batch_size]
-        start_ids = [torch.IntTensor(encode(c)) for c in contexts]
-    else:  # unconditional case
-        batch_size = max_batch_size
-        contexts = ['<|endoftext|>'] * batch_size
-        start_ids = [torch.IntTensor([end_id])] * batch_size
-
-    start_lengths = [len(ids) for ids in start_ids]
-    input_len = max(start_lengths)
-
-    start_ids = pad_sequence(start_ids, batch_first=True, padding_value=end_id)
-    start_lengths = torch.IntTensor(start_lengths)
+    
+    start_ids, start_lengths, mask_positions = get_ids(contexts)
 
     if args.is_fix_random_seed == True:
         random_seed = 0
@@ -198,7 +198,7 @@ def main():
     # Prepare model.
     glm = Glm(head_num, size_per_head, vocab_size, rotary_embedding_dim, start_id, end_id,
                       layer_num, max_seq_len, tensor_para_size, pipeline_para_size,
-                      lib_path=args.lib_path, world_size=args.world_size, rank=args.local_rank)
+                      lib_path=args.lib_path, world_size=args.world_size, rank=args.local_rank, tokenizer=tokenizer)
     if not glm.load(ckpt_path=args.ckpt_path):
         print("[WARNING] Checkpoint file not found. Model loading is skipped.")
     if args.data_type == 'fp16':
@@ -213,33 +213,37 @@ def main():
                     len_penalty,
                     repetition_penalty,
                     random_seed)
-        
-    with torch.no_grad():
-        # Generate tokens.
-        tokens_batch = glm(start_ids,
-                            start_lengths,
-                            return_output_length,
-                            return_cum_log_probs)
-        # # only a thread (rank 0) gets the output, while the others are supposed to return None.
+    
+    def get_res(tokens_batch):
+        res = []
         if tokens_batch is not None:
             if return_cum_log_probs > 0:
                 tokens_batch, _, cum_log_probs = tokens_batch
                 print('[INFO] Log probs of sentences:', cum_log_probs)
-            outputs = []
             tokens_batch = tokens_batch.cpu().numpy()
-            for i, (context, tokens) in enumerate(zip(contexts, tokens_batch)):
+            for i, tokens in enumerate(tokens_batch):
                 for beam_id in range(beam_width):
+                    res_context = ""
                     token = tokens[beam_id][start_lengths[i]:]  # exclude context input from the output
-                    # output = enc.decode(token)
-                    output = token
-                    outputs.append(output)
-                    if args.local_rank == 0:
-                        print(f"[INFO] batch {i}, beam {beam_id}: \n[Context]\n{context}\n\n[Output]\n")
-                        for k in output:
-                            if k:
-                                print(tokenizer.IdToToken(int(k)),end=" ")
-                        print()
- 
+                    token = list(token)
+                    if 20002 in token:
+                        token = token[:token.index(20002)]
+                    if 150005 in token:
+                        token = token[:token.index(150005)]
+                    res.append(tokenizer.detokenize(token))
+        return res
+    
+    with torch.no_grad():
+        for _ in range(3):
+            # Generate tokens.
+            tokens_batch = glm(start_ids,
+                                start_lengths,
+                                mask_positions,
+                                return_output_length,
+                                return_cum_log_probs)
+            # # only a thread (rank 0) gets the output, while the others are supposed to return None.
+            if args.local_rank == 0:
+                print(get_res(tokens_batch))
         if args.time:
             iterations = 3
             time = timeit.default_timer()
@@ -260,6 +264,7 @@ def main():
                 #     random_seed)
                 glm(start_ids,
                     start_lengths,
+                    mask_positions,
                     return_output_length,
                     return_cum_log_probs)
             time_elapsed = timeit.default_timer() - time

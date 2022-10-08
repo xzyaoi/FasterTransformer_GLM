@@ -431,7 +431,7 @@ void GlmDecoderSelfAttentionLayer<T>::forward(std::vector<fastertransformer::Ten
     //      value_cache [batch, local_head_num, max_seq_len, size_per_head]
 
     FT_LOG_DEBUG(__PRETTY_FUNCTION__);
-    FT_CHECK(input_tensors->size() == 8 || input_tensors->size() == 9);
+    FT_CHECK(input_tensors->size() == 9 || input_tensors->size() == 10);
     FT_CHECK(output_tensors->size() == 3);
     FT_CHECK(output_tensors->at(1).shape.size() == 5 || output_tensors->at(1).shape.size() == 3);
     FT_CHECK(output_tensors->at(2).shape.size() == 4 || output_tensors->at(2).shape.size() == 3);
@@ -441,11 +441,12 @@ void GlmDecoderSelfAttentionLayer<T>::forward(std::vector<fastertransformer::Ten
     const T* attention_input = reinterpret_cast<const T*>(input_tensors->at(0).data);
     const bool* finished = reinterpret_cast<const bool*>(input_tensors->at(1).data);
     const int* sequence_lengths = reinterpret_cast<const int*>(input_tensors->at(2).data);
-    const int* cache_indir = reinterpret_cast<const int*>(input_tensors->at(6).data);
-    const int layer_id = *((int*)(input_tensors->at(7).data));
+    const int* mask_positions = reinterpret_cast<const int*>(input_tensors->at(6).data);
+    const int* cache_indir = reinterpret_cast<const int*>(input_tensors->at(7).data);
+    const int layer_id = *((int*)(input_tensors->at(8).data));
     const T* relative_attention_bias =
-        reinterpret_cast<const T*>(input_tensors->size() == 9 ? input_tensors->at(8).data : nullptr);
-    const int relative_attention_bias_stride = input_tensors->size() == 9 ? input_tensors->at(8).shape[3] : 0;
+        reinterpret_cast<const T*>(input_tensors->size() == 10 ? input_tensors->at(9).data : nullptr);
+    const int relative_attention_bias_stride = input_tensors->size() == 10 ? input_tensors->at(9).shape[3] : 0;
 
     T* attention_out = (T*)(output_tensors->at(0).data);
     T* key_cache = (T*)(output_tensors->at(1).data);
@@ -511,6 +512,8 @@ void GlmDecoderSelfAttentionLayer<T>::forward(std::vector<fastertransformer::Ten
                                         v_buf_,
                                         qkv_buf_,
                                         attention_weights->query_weight.bias,
+                                        (int*)(input_tensors->at(3).data),
+                                        mask_positions,
                                         layer_id,
                                         batch_size,
                                         1,

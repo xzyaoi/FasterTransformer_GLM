@@ -35,7 +35,7 @@ void GlmContextAttentionLayer<T>::forward(std::vector<fastertransformer::Tensor>
     //      key_cache [batch, local_head_num, size_per_head // x, max_seq_len, x]
     //      value_cache [batch, local_head_num, max_seq_len, size_per_head]
 
-    FT_CHECK(input_tensors->size() == 4);
+    FT_CHECK(input_tensors->size() == 6);
     FT_CHECK(output_tensors->size() == 3);
     FT_CHECK(output_tensors->at(1).shape.size() == 5);
     FT_CHECK(output_tensors->at(2).shape.size() == 4 || output_tensors->at(2).shape.size() == 3);
@@ -49,8 +49,10 @@ void GlmContextAttentionLayer<T>::forward(std::vector<fastertransformer::Tensor>
     T* attention_out = (T*)output_tensors->at(0).data;
     const T* attention_input = (const T*)input_tensors->at(0).data;
     const T* attention_mask = (const T*)input_tensors->at(1).data;
-    const bool is_final = *((bool*)(input_tensors->at(2).data));
-    const int layer_id = *((int*)(input_tensors->at(3).data));
+    const int* input_lengths = (const int*)input_tensors->at(2).data;
+    const int* mask_positions = (const int*)input_tensors->at(3).data;
+    const bool is_final = *((bool*)(input_tensors->at(4).data));
+    const int layer_id = *((int*)(input_tensors->at(5).data));
 
     const int m = input_tensors->at(0).shape[0];
 
@@ -88,6 +90,8 @@ void GlmContextAttentionLayer<T>::forward(std::vector<fastertransformer::Tensor>
                                    v_buf_2_,
                                    qkv_buf_,
                                    attention_weights->query_weight.bias,
+                                   input_lengths,
+                                   mask_positions,
                                    layer_id,
                                    request_batch_size,
                                    request_seq_len,

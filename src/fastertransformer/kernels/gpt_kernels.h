@@ -95,6 +95,17 @@ void invokeTileGptInputs(int* tiled_input_ids,
                          const int max_input_length,
                          cudaStream_t stream);
 
+void invokeTileGptInputs(int* tiled_input_ids,
+                         int* tiled_input_lengths,
+                         int* tiled_mask_positions,
+                         const int* input_ids,
+                         const int* input_lengths,
+                         const int* mask_positions,
+                         const int batch_size,
+                         const int beam_width,
+                         const int max_input_length,
+                         cudaStream_t stream);
+
 bool hasDiffRuntimeArgs(const std::unordered_map<std::string, Tensor>* input_tensors);
 
 template<typename T>

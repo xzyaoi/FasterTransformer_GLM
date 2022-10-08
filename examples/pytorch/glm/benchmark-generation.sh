@@ -9,8 +9,8 @@ MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 #SAMPLING ARGS
 TEMP=1.0
 #If TOPK/TOPP are 0 it defaults to greedy sampling, top-k will also override top-p
-TOPK=5
-TOPP=0
+TOPK=0
+TOPP=0.9
 
 script_path=$(realpath $0)
 script_dir=$(dirname $script_path)

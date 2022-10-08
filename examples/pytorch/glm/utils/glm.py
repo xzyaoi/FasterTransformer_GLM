@@ -44,6 +44,35 @@ def get_torch_default_comm():
         pass
     raise RuntimeError("Unsupported PyTorch version")
 
+
+def top_k_logits(logits, top_k=0, top_p=0.0, filter_value=-65504):
+    # This function has been mostly taken from huggingface conversational ai code at
+    # https://medium.com/huggingface/how-to-build-a-state-of-the-art-conversational-ai-with-transfer-learning-2d818ac26313
+
+    if top_k > 0:
+        # Remove all tokens with a probability less than the last token of the top-k
+        indices_to_remove = logits < torch.topk(logits, top_k)[0][..., -1, None]
+        logits[indices_to_remove] = filter_value
+
+    if top_p > 0.0:
+        sorted_logits, sorted_indices = torch.sort(logits, descending=True)
+        cumulative_probs = torch.cumsum(torch.nn.functional.softmax(sorted_logits, dim=-1), dim=-1)
+
+        # Remove tokens with cumulative probability above the threshold
+        sorted_indices_to_remove = cumulative_probs > top_p
+        # Shift the indices to the right to keep also the first token above the threshold
+        sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
+        sorted_indices_to_remove[..., 0] = 0
+        # sorted_indices_to_remove[..., :] = 1
+        # sorted_indices_to_remove[..., 2] = 0
+
+        # print(sorted_logits[cumulative_probs < top_p])
+        
+        indices_to_remove = sorted_indices[sorted_indices_to_remove]
+        logits[indices_to_remove] = filter_value
+    
+    return logits
+
 class GlmWeights(object):
     def __init__(self, head_num, size_per_head, layer_num, vocab_size, max_seq_len, tensor_para_size, pipeline_para_size):
         assert(head_num % tensor_para_size == 0)
@@ -182,6 +211,7 @@ class Glm(nn.Module):
                  lib_path,
                  world_size,
                  rank,
+                 tokenizer,
                  dtype="fp16"):
         super().__init__()
         self.head_num = head_num
@@ -196,6 +226,8 @@ class Glm(nn.Module):
         self.max_seq_len = max_seq_len
         self.use_sparse_gemm = False
         self.build_model = False
+
+        self.tokenizer = tokenizer
 
         assert torch.cuda.is_available(), "CUDA is required for this model."
 
@@ -275,6 +307,7 @@ class Glm(nn.Module):
         self.output_len = output_len
         self.beam_width = beam_width
         self.top_k = top_k
+        self.top_p = top_p
         self.model.init_model(output_len,
                                 beam_width,
                                 top_k,
@@ -288,6 +321,7 @@ class Glm(nn.Module):
     def forward(self,
                 start_ids,
                 start_lengths,
+                mask_positions,
                 return_output_length=False,
                 return_cum_log_probs=0):
         
@@ -297,11 +331,16 @@ class Glm(nn.Module):
         # Inputs to device
         start_ids = start_ids.cuda(self.device)
         start_lengths = start_lengths.cuda(self.device)
+        mask_positions = mask_positions.cuda(self.device)
         # outputs: output_ids, output_lengths, output_cum_log_probs (optional)
 
         # outputs = self.model.forward(start_ids,
         #                              start_lengths,
+        #                              mask_positions,
         #                              return_cum_log_probs)
+        
+        # output_ids, output_lengths = outputs
+        # return output_ids
         
         output_ids = torch.zeros([input_len + self.output_len,start_ids.shape[0],self.beam_width],dtype=torch.int32).cuda()
         output_ids_buf = torch.zeros([input_len + self.output_len,start_ids.shape[0],self.beam_width],dtype=torch.int32).cuda()
@@ -312,6 +351,7 @@ class Glm(nn.Module):
         
         self.model.encode(start_ids,
                             start_lengths,
+                            mask_positions,
                             output_ids_buf,
                             logits_buf,
                             output_ids,
@@ -319,19 +359,24 @@ class Glm(nn.Module):
                             sequence_lengths,
                             cum_log_probs,
                             return_cum_log_probs)
-        
-        i = input_len
-        self.model.decode(i)
-        for j in range(start_ids.shape[0]):
-            output_ids_buf[i][j][0] += logits_buf[j][0].topk(start_ids.shape[0]).indices[j]
-            sequence_lengths[j][0] += 1
-        
-        for i in range(input_len+1,input_len+self.output_len):
+                
+        for i in range(input_len,input_len+self.output_len):
             self.model.decode(i)
             for j in range(start_ids.shape[0]):
-                output_ids_buf[i][j][0] += logits_buf[j][0].argmax()
+                logits = logits_buf[j][0]
+                if self.top_k >= 1:
+                    values, indices = torch.topk(logits, self.top_k)
+                    values = values.cpu()
+                    probs = torch.nn.functional.softmax(values, dim=-1)
+                    pred = [indices[torch.multinomial(probs, num_samples=1)[0]]]
+                    # pred = [logits.argmax()]
+                else:
+                    logits = top_k_logits(logits, self.top_k, self.top_p)
+                    probs = torch.nn.functional.softmax(logits.float(), dim=-1)
+                    pred = torch.multinomial(probs, num_samples=1)
+                output_ids_buf[i][j][0] += pred[0]
                 sequence_lengths[j][0] += 1
-
+                
         return output_ids_buf.permute(1,2,0)
 
         # if return_cum_log_probs == 0:

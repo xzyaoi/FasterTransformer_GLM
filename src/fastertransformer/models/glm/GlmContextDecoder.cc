@@ -207,7 +207,8 @@ void GlmContextDecoder<T>::forward(std::vector<Tensor>* output_tensors,
 {
     std::unordered_map<std::string, Tensor> input_tensors_map{{"decoder_input", input_tensors->at(0)},
                                                               {"attention_mask", input_tensors->at(1)},
-                                                              {"input_lengths", input_tensors->at(2)}};
+                                                              {"input_lengths", input_tensors->at(2)},
+                                                              {"mask_positions", input_tensors->at(3)}};
     std::unordered_map<std::string, Tensor> output_tensors_map{{"decoder_output", output_tensors->at(0)},
                                                                {"key_cache", output_tensors->at(1)},
                                                                {"value_cache", output_tensors->at(2)},
@@ -237,7 +238,7 @@ void GlmContextDecoder<T>::forward(std::unordered_map<std::string, Tensor>* outp
     // For example, the shape of decoder_input becomes [ite, batch_size, seq_len, hidden_dimension] during
     // computing.
 
-    FT_CHECK(input_tensors->size() == 3);
+    FT_CHECK(input_tensors->size() == 4);
     FT_CHECK(output_tensors->size() == 4);
     isValidBatchSize(input_tensors->at("decoder_input").shape[0]);
     isValidSeqLen(input_tensors->at("decoder_input").shape[1]);
@@ -320,6 +321,8 @@ void GlmContextDecoder<T>::forward(std::unordered_map<std::string, Tensor>* outp
                        data_type,
                        {(size_t)local_batch_size, (size_t)1, (size_t)seq_len, (size_t)seq_len},
                        attention_mask + local_batch_size * ite * seq_len * seq_len},
+                Tensor{MEMORY_CPU, TYPE_INT32, {(size_t)local_batch_size}, (int*)input_tensors->at("input_lengths").data},
+                Tensor{MEMORY_CPU, TYPE_INT32, {(size_t)local_batch_size}, (int*)input_tensors->at("mask_positions").data},
                 Tensor{MEMORY_CPU, TYPE_BOOL, {(size_t)1}, &is_final},
                 Tensor{MEMORY_CPU, TYPE_INT32, {(size_t)1}, &l}};
 

@@ -220,7 +220,7 @@ void GlmDecoder<T>::forward(std::unordered_map<std::string, Tensor>* output_tens
     //      key_cache [num_layer, batch_size, head_num, size_per_head // x, max_seq_len, x]
     //      value_cache [num_layer, batch_size, head_num, max_seq_len, size_per_head]
 
-    FT_CHECK(input_tensors->size() == 8);
+    FT_CHECK(input_tensors->size() == 9);
     FT_CHECK(output_tensors->size() == 3);
     isValidBatchSize(input_tensors->at("decoder_input").shape[0]);
     allocateBuffer();
@@ -293,6 +293,7 @@ void GlmDecoder<T>::forward(std::unordered_map<std::string, Tensor>* output_tens
             input_tensors->at("input_lengths"),
             input_tensors->at("max_input_length"),
             input_tensors->at("step"),
+            input_tensors->at("mask_positions"),
             input_tensors->at("cache_indirection"),
             Tensor{MEMORY_CPU, TYPE_INT32, {(size_t)1}, &l}};
 

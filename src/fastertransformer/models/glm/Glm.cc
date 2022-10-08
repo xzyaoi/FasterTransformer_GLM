@@ -116,6 +116,7 @@ void Glm<T>::allocateBuffer(size_t batch_size, size_t beam_width, size_t max_seq
     tiled_input_ids_buf_ =
         (int*)(allocator_->reMalloc(tiled_input_ids_buf_, sizeof(int) * batchxbeam * max_input_len, true));
     tiled_input_lengths_buf_ = (int*)(allocator_->reMalloc(tiled_input_lengths_buf_, sizeof(int) * batchxbeam, true));
+    tiled_mask_positions_buf_ = (int*)(allocator_->reMalloc(tiled_mask_positions_buf_, sizeof(int) * batchxbeam, true));
 
     transposed_output_ids_buf_ =
         (int*)(allocator_->reMalloc(transposed_output_ids_buf_, sizeof(int) * batchxbeam * max_seq_len, true));
@@ -159,6 +160,7 @@ void Glm<T>::freeBuffer()
 
         allocator_->free(tiled_input_ids_buf_);
         allocator_->free(tiled_input_lengths_buf_);
+        allocator_->free(tiled_mask_positions_buf_);
 
         allocator_->free(transposed_output_ids_buf_);
         allocator_->free(parent_ids_buf_);
@@ -358,6 +360,7 @@ void Glm<T>::encode(std::unordered_map<std::string, Tensor>* output_tensors,
     FT_CHECK_WITH_INFO(output_tensors->size() >= 2, "output_tensors->size() >= 2");
     FT_CHECK(input_tensors->at("input_ids").shape.size() == 2);
     FT_CHECK(input_tensors->at("input_lengths").shape.size() == 1);
+    FT_CHECK(input_tensors->at("mask_positions").shape.size() == 1);
     FT_CHECK(input_tensors->at("max_output_seq_len").shape.size() == 1
              || input_tensors->at("max_output_seq_len").shape.size() == 2);
     FT_CHECK(output_tensors->at("output_ids").shape.size() == 3);
@@ -432,8 +435,10 @@ void Glm<T>::encode(std::unordered_map<std::string, Tensor>* output_tensors,
     if (input_tensors->count("prefix_soft_prompt_embedding") || max_input_length >= 1) {
         invokeTileGptInputs(tiled_input_ids_buf_,
                             tiled_input_lengths_buf_,
+                            tiled_mask_positions_buf_,
                             (int*)input_tensors->at("input_ids").data,
                             (const int*)(input_tensors->at("input_lengths").data),
+                            (const int*)(input_tensors->at("mask_positions").data),
                             batch_size,
                             beam_width,
                             max_input_length,
@@ -502,7 +507,8 @@ void Glm<T>::encode(std::unordered_map<std::string, Tensor>* output_tensors,
                     data_type,
                     {batch_size * beam_width, 1, (size_t)max_input_length, (size_t)max_input_length},
                     input_attention_mask_}},
-            {"input_lengths", Tensor{MEMORY_GPU, TYPE_INT32, {batch_size * beam_width}, tiled_input_lengths_buf_}}};
+            {"input_lengths", Tensor{MEMORY_GPU, TYPE_INT32, {batch_size * beam_width}, tiled_input_lengths_buf_}},
+            {"mask_positions", Tensor{MEMORY_GPU, TYPE_INT32, {batch_size * beam_width}, tiled_mask_positions_buf_}}};
 
         std::unordered_map<std::string, Tensor> decoder_output_tensors{
             {"decoder_output",
@@ -563,8 +569,10 @@ void Glm<T>::encode(std::unordered_map<std::string, Tensor>* output_tensors,
         sync_check_cuda_error();
         invokeTileGptInputs(tiled_input_ids_buf_,
                             tiled_input_lengths_buf_,
+                            tiled_mask_positions_buf_,
                             (int*)input_tensors->at("input_ids").data,
                             (const int*)(input_tensors->at("input_lengths").data),
+                            (const int*)(input_tensors->at("mask_positions").data),
                             batch_size,
                             beam_width,
                             max_input_length,
@@ -639,6 +647,11 @@ void Glm<T>::decode(std::unordered_map<std::string, Tensor>* output_tensors,
                 {"max_input_length", Tensor{MEMORY_CPU, TYPE_INT32, {1}, &max_input_length}},
                 {"step", Tensor{MEMORY_CPU, TYPE_INT32, {1}, &step}},
                 {"ite", Tensor{MEMORY_CPU, TYPE_INT32, {1}, &ite}},
+                {"mask_positions",
+                    Tensor{MEMORY_GPU,
+                        TYPE_INT32,
+                        {local_batch_size * beam_width},
+                        tiled_mask_positions_buf_ + id_offset}},
                 {"cache_indirection",
                     Tensor{MEMORY_GPU,
                         TYPE_INT32,
