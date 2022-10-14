@@ -17,6 +17,8 @@
 
 #pragma once
 
+#include "src/fastertransformer/kernels/matrix_vector_multiplication.h"
+#include "src/fastertransformer/kernels/quantization_int8_kernels.h"
 #include "src/fastertransformer/layers/attention_layers/BaseAttentionLayer.h"
 
 namespace fastertransformer {
@@ -60,6 +62,7 @@ protected:
     float* qk_buf_float_ = nullptr;
     T* qkv_buf_2_ = nullptr;
     T* qkv_buf_3_ = nullptr;
+    T* weights_buf_ = nullptr;
 
 public:
     GlmContextAttentionLayer(size_t max_batch_size,

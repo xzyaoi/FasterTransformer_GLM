@@ -59,10 +59,10 @@ void FfnLayer<T>::forward(std::vector<fastertransformer::Tensor>* output_tensors
 #endif
         if (int8_mode_ == 1 && m <= 2) {
             FT_CHECK(ffn_weights->intermediate_weight.int8_kernel != NULL
-                     && ffn_weights->intermediate_weight.scale != NULL);
+                     && ffn_weights->intermediate_weight.quant_scale != NULL);
             int8WeightPerChannelLdkMultiplicationLauncher(ffn_weights->intermediate_weight.int8_kernel,
                                                           input_tensor,
-                                                          ffn_weights->intermediate_weight.scale,
+                                                          ffn_weights->intermediate_weight.quant_scale,
                                                           inter_buf_,
                                                           m,
                                                           inter_size_,
@@ -106,10 +106,10 @@ void FfnLayer<T>::forward(std::vector<fastertransformer::Tensor>* output_tensors
     else {
 #endif
         if (int8_mode_ == 1 && m <= 2) {
-            FT_CHECK(ffn_weights->output_weight.int8_kernel != NULL && ffn_weights->output_weight.scale != NULL);
+            FT_CHECK(ffn_weights->output_weight.int8_kernel != NULL && ffn_weights->output_weight.quant_scale != NULL);
             int8WeightPerChannelLdkMultiplicationLauncher(ffn_weights->output_weight.int8_kernel,
                                                           inter_buf_,
-                                                          ffn_weights->output_weight.scale,
+                                                          ffn_weights->output_weight.quant_scale,
                                                           output_tensor,
                                                           m,
                                                           hidden_units_,

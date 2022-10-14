@@ -70,6 +70,7 @@ void GlmContextAttentionLayer<T>::forward(std::vector<fastertransformer::Tensor>
     }
     else {
 #endif
+    if(attention_weights->query_weight.kernel) {
         cublas_wrapper_->Gemm(CUBLAS_OP_N,
                               CUBLAS_OP_N,
                               3 * local_hidden_units_,  // n
@@ -81,6 +82,39 @@ void GlmContextAttentionLayer<T>::forward(std::vector<fastertransformer::Tensor>
                               hidden_units_,  // k
                               qkv_buf_,
                               3 * local_hidden_units_ /* n */);
+    } else {
+        FT_CHECK(attention_weights->query_weight.int8_kernel != NULL || attention_weights->query_weight.int4_kernel != NULL);
+        FT_CHECK(attention_weights->query_weight.quant_scale != NULL);
+        if(attention_weights->query_weight.int8_kernel != NULL) {
+            invokeInt8WeightExtraction(attention_weights->query_weight.int8_kernel,
+                                    attention_weights->query_weight.quant_scale,
+                                    weights_buf_,
+                                    hidden_units_,
+                                    3 * local_hidden_units_,
+                                    stream_);
+        }
+        else {
+            invokeInt4WeightExtraction(attention_weights->query_weight.int4_kernel,
+                                    attention_weights->query_weight.quant_scale,
+                                    weights_buf_,
+                                    hidden_units_ / 2,
+                                    3 * local_hidden_units_,
+                                    stream_);
+        }
+        sync_check_cuda_error();
+        cublas_wrapper_->Gemm(CUBLAS_OP_N,
+                              CUBLAS_OP_N,
+                              3 * local_hidden_units_,  // n
+                              m,
+                              hidden_units_,  // k
+                              weights_buf_,
+                              3 * local_hidden_units_,  // n
+                              attention_input,
+                              hidden_units_,  // k
+                              qkv_buf_,
+                              3 * local_hidden_units_ /* n */);
+    }
+        
 #ifdef SPARSITY_ENABLED
     }
 #endif
@@ -217,6 +251,7 @@ void GlmContextAttentionLayer<T>::forward(std::vector<fastertransformer::Tensor>
         }
         else {
 #endif
+        if(attention_weights->attention_output_weight.kernel) {
             cublas_wrapper_->Gemm(CUBLAS_OP_N,
                                   CUBLAS_OP_N,
                                   hidden_units_,
@@ -228,6 +263,37 @@ void GlmContextAttentionLayer<T>::forward(std::vector<fastertransformer::Tensor>
                                   local_hidden_units_,
                                   attention_out,
                                   hidden_units_);
+        } else {
+            FT_CHECK(attention_weights->attention_output_weight.int8_kernel != NULL || attention_weights->attention_output_weight.int4_kernel != NULL);
+            FT_CHECK(attention_weights->attention_output_weight.quant_scale != NULL);
+            if(attention_weights->attention_output_weight.int8_kernel != NULL) {
+                invokeInt8WeightExtraction(attention_weights->attention_output_weight.int8_kernel,
+                                        attention_weights->attention_output_weight.quant_scale,
+                                        weights_buf_,
+                                        local_hidden_units_,
+                                        hidden_units_,
+                                        stream_);
+            } else {
+                invokeInt4WeightExtraction(attention_weights->attention_output_weight.int4_kernel,
+                                        attention_weights->attention_output_weight.quant_scale,
+                                        weights_buf_,
+                                        local_hidden_units_ / 2,
+                                        hidden_units_,
+                                        stream_);
+            }
+            sync_check_cuda_error();
+            cublas_wrapper_->Gemm(CUBLAS_OP_N,
+                                  CUBLAS_OP_N,
+                                  hidden_units_,
+                                  m,
+                                  local_hidden_units_,
+                                  weights_buf_,
+                                  hidden_units_,
+                                  qkv_buf_3_,
+                                  local_hidden_units_,
+                                  attention_out,
+                                  hidden_units_);
+        }
 #ifdef SPARSITY_ENABLED
         }
 #endif
@@ -355,6 +421,8 @@ void GlmContextAttentionLayer<T>::allocateBuffer()
         qkv_buf_2_ = (T*)allocator_->malloc(sizeof(T) * max_batch_size_ * max_seq_len_ * local_hidden_units_, true);
         qkv_buf_3_ = (T*)allocator_->malloc(sizeof(T) * max_batch_size_ * max_seq_len_ * local_hidden_units_, true);
 
+        weights_buf_ = (T*)allocator_->malloc(sizeof(T) * hidden_units_ * 3 * local_hidden_units_, false);
+
         if (is_qk_buf_float_ == true) {
             qk_buf_float_ = (float*)allocator_->malloc(
                 sizeof(float) * max_batch_size_ * local_head_num_ * max_seq_len_ * max_seq_len_, true);
@@ -377,6 +445,8 @@ void GlmContextAttentionLayer<T>::allocateBuffer(size_t batch_size, size_t seq_l
     qkv_buf_2_ = (T*)allocator_->reMalloc(qkv_buf_2_, sizeof(T) * batch_size * seq_len * local_hidden_units_, true);
     qkv_buf_3_ = (T*)allocator_->reMalloc(qkv_buf_3_, sizeof(T) * batch_size * seq_len * local_hidden_units_, true);
 
+    weights_buf_ = (T*)allocator_->reMalloc(weights_buf_, sizeof(T) * hidden_units_ * 3 * local_hidden_units_, false);
+
     if (is_qk_buf_float_ == true) {
         qk_buf_float_ = (float*)allocator_->reMalloc(
             qk_buf_float_, sizeof(float) * batch_size * local_head_num_ * seq_len * seq_len, true);
@@ -396,6 +466,8 @@ void GlmContextAttentionLayer<T>::freeBuffer()
         allocator_->free(qk_buf_);
         allocator_->free(qkv_buf_2_);
         allocator_->free(qkv_buf_3_);
+
+        allocator_->free(weights_buf_);
 
         if (is_qk_buf_float_ == true) {
             allocator_->free(qk_buf_float_);

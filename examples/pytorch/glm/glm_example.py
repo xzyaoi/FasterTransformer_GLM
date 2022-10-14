@@ -86,7 +86,7 @@ def main():
                         help='repetition penalty')
     parser.add_argument('--max_seq_len', type=int, default=1024,
                         help='max sequence length for position embedding table.')
-    parser.add_argument('--data_type', type=str, choices=['fp32', 'fp16'], default='fp16')
+    parser.add_argument('--data_type', type=str, choices=['fp16', 'int8', 'int4'], default='fp16')
     parser.add_argument('--time', action='store_true',
                         help='whether or not to measure time elapsed.')
     parser.add_argument('--sample_input_file', type=str, default=None,
@@ -198,11 +198,9 @@ def main():
     # Prepare model.
     glm = Glm(head_num, size_per_head, vocab_size, rotary_embedding_dim, start_id, end_id,
                       layer_num, max_seq_len, tensor_para_size, pipeline_para_size,
-                      lib_path=args.lib_path, world_size=args.world_size, rank=args.local_rank, tokenizer=tokenizer)
+                      lib_path=args.lib_path, world_size=args.world_size, rank=args.local_rank, tokenizer=tokenizer, dtype = args.data_type)
     if not glm.load(ckpt_path=args.ckpt_path):
         print("[WARNING] Checkpoint file not found. Model loading is skipped.")
-    if args.data_type == 'fp16':
-        glm.half()
     
     glm.init_model(output_len,
                     beam_width,
@@ -216,21 +214,24 @@ def main():
     
     def get_res(tokens_batch):
         res = []
-        if tokens_batch is not None:
-            if return_cum_log_probs > 0:
-                tokens_batch, _, cum_log_probs = tokens_batch
-                print('[INFO] Log probs of sentences:', cum_log_probs)
-            tokens_batch = tokens_batch.cpu().numpy()
-            for i, tokens in enumerate(tokens_batch):
-                for beam_id in range(beam_width):
-                    res_context = ""
-                    token = tokens[beam_id][start_lengths[i]:]  # exclude context input from the output
-                    token = list(token)
-                    if 20002 in token:
-                        token = token[:token.index(20002)]
-                    if 150005 in token:
-                        token = token[:token.index(150005)]
-                    res.append(tokenizer.detokenize(token))
+        try:
+            if tokens_batch is not None:
+                if return_cum_log_probs > 0:
+                    tokens_batch, _, cum_log_probs = tokens_batch
+                    print('[INFO] Log probs of sentences:', cum_log_probs)
+                tokens_batch = tokens_batch.cpu().numpy()
+                for i, tokens in enumerate(tokens_batch):
+                    for beam_id in range(beam_width):
+                        res_context = ""
+                        token = tokens[beam_id][start_lengths[i]:]  # exclude context input from the output
+                        token = list(token)
+                        if 20002 in token:
+                            token = token[:token.index(20002)]
+                        if 150005 in token:
+                            token = token[:token.index(150005)]
+                        res.append(tokenizer.detokenize(token))
+        except:
+            pass
         return res
     
     with torch.no_grad():

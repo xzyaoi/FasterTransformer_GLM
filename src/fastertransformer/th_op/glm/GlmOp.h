@@ -108,7 +108,10 @@ public:
           const int end_id,
           const int tensor_para_size,
           const int pipeline_para_size,
-          const vector<th::Tensor> weights):
+          const int dtype_id,
+          const vector<th::Tensor> weights,
+          const vector<th::Tensor> quant_weights,
+          const vector<th::Tensor> quant_scales):
         h_(h),
         rank_(rank),
         head_num_(head_num),
@@ -121,7 +124,10 @@ public:
         end_id_(end_id),
         tensor_para_size_(tensor_para_size),
         pipeline_para_size_(pipeline_para_size),
-        weights_(weights)
+        dtype_id_(dtype_id),
+        weights_(weights),
+        quant_weights_(quant_weights),
+        quant_scales_(quant_scales)
     {
         ft::check_cuda_error(cublasLtCreate(&cublasltHandle_));
         cublas_algo_map_ = new ft::cublasAlgoMap("gemm_config.in");
@@ -132,40 +138,78 @@ public:
         glm_weights_.resizeLayer(layer_num_);
 
         for (int i = 0; i < (int)layer_num_; i++) {
-            glm_weights_.decoder_layer_weights[i]->self_attention_weights.query_weight.kernel =
-                get_ptr<T>(weights_[i + 0 * layer_num_]);
             glm_weights_.decoder_layer_weights[i]->self_attention_weights.query_weight.bias =
-                get_ptr<T>(weights_[i + 1 * layer_num_]);
-            glm_weights_.decoder_layer_weights[i]->self_attention_weights.attention_output_weight.kernel =
-                get_ptr<T>(weights_[i + 2 * layer_num_]);
+                get_ptr<T>(weights_[i + 0 * layer_num_]);
             glm_weights_.decoder_layer_weights[i]->self_attention_weights.attention_output_weight.bias =
-                get_ptr<T>(weights_[i + 3 * layer_num_]);
+                get_ptr<T>(weights_[i + 1 * layer_num_]);
             glm_weights_.decoder_layer_weights[i]->self_attn_layernorm_weights.beta =
-                get_ptr<T>(weights_[i + 4 * layer_num_]);
+                get_ptr<T>(weights_[i + 2 * layer_num_]);
             glm_weights_.decoder_layer_weights[i]->self_attn_layernorm_weights.gamma =
-                get_ptr<T>(weights_[i + 5 * layer_num_]);
-            glm_weights_.decoder_layer_weights[i]->glu_ffn_weights.intermediate_weight[0].kernel =
-                get_ptr<T>(weights_[i + 6 * layer_num_]);
+                get_ptr<T>(weights_[i + 3 * layer_num_]);
             glm_weights_.decoder_layer_weights[i]->glu_ffn_weights.intermediate_weight[0].bias =
-                get_ptr<T>(weights_[i + 7 * layer_num_]);
-            glm_weights_.decoder_layer_weights[i]->glu_ffn_weights.intermediate_weight[1].kernel  =
-                get_ptr<T>(weights_[i + 8 * layer_num_]);
+                get_ptr<T>(weights_[i + 4 * layer_num_]);
             glm_weights_.decoder_layer_weights[i]->glu_ffn_weights.intermediate_weight[1].bias =
-                get_ptr<T>(weights_[i + 9 * layer_num_]);
-            glm_weights_.decoder_layer_weights[i]->glu_ffn_weights.output_weight.kernel  =
-                get_ptr<T>(weights_[i + 10 * layer_num_]);
+                get_ptr<T>(weights_[i + 5 * layer_num_]);
             glm_weights_.decoder_layer_weights[i]->glu_ffn_weights.output_weight.bias =
-                get_ptr<T>(weights_[i + 11 * layer_num_]);
+                get_ptr<T>(weights_[i + 6 * layer_num_]);
             glm_weights_.decoder_layer_weights[i]->glu_ffn_layernorm_weights.beta =
-                get_ptr<T>(weights_[i + 12 * layer_num_]);
+                get_ptr<T>(weights_[i + 7 * layer_num_]);
             glm_weights_.decoder_layer_weights[i]->glu_ffn_layernorm_weights.gamma =
-                get_ptr<T>(weights_[i + 13 * layer_num_]);
+                get_ptr<T>(weights_[i + 8 * layer_num_]);
+
+            if (dtype_id == 0 || dtype_id == 1) {
+                glm_weights_.decoder_layer_weights[i]->self_attention_weights.query_weight.kernel =
+                    get_ptr<T>(quant_weights_[i + 0 * layer_num_]);
+                glm_weights_.decoder_layer_weights[i]->self_attention_weights.attention_output_weight.kernel =
+                    get_ptr<T>(quant_weights_[i + 1 * layer_num_]);
+                glm_weights_.decoder_layer_weights[i]->glu_ffn_weights.intermediate_weight[0].kernel =
+                    get_ptr<T>(quant_weights_[i + 2 * layer_num_]);
+                glm_weights_.decoder_layer_weights[i]->glu_ffn_weights.intermediate_weight[1].kernel =
+                    get_ptr<T>(quant_weights_[i + 3 * layer_num_]);
+                glm_weights_.decoder_layer_weights[i]->glu_ffn_weights.output_weight.kernel =
+                    get_ptr<T>(quant_weights_[i + 4 * layer_num_]);
+            } else if(dtype_id == 2) {
+                glm_weights_.decoder_layer_weights[i]->self_attention_weights.query_weight.int8_kernel =
+                    get_ptr<int8_t>(quant_weights_[i + 0 * layer_num_]);
+                glm_weights_.decoder_layer_weights[i]->self_attention_weights.attention_output_weight.int8_kernel =
+                    get_ptr<int8_t>(quant_weights_[i + 1 * layer_num_]);
+                glm_weights_.decoder_layer_weights[i]->glu_ffn_weights.intermediate_weight[0].int8_kernel =
+                    get_ptr<int8_t>(quant_weights_[i + 2 * layer_num_]);
+                glm_weights_.decoder_layer_weights[i]->glu_ffn_weights.intermediate_weight[1].int8_kernel =
+                    get_ptr<int8_t>(quant_weights_[i + 3 * layer_num_]);
+                glm_weights_.decoder_layer_weights[i]->glu_ffn_weights.output_weight.int8_kernel =
+                    get_ptr<int8_t>(quant_weights_[i + 4 * layer_num_]);
+            } else if(dtype_id == 3) {
+                glm_weights_.decoder_layer_weights[i]->self_attention_weights.query_weight.int4_kernel =
+                    get_ptr<int8_t>(quant_weights_[i + 0 * layer_num_]);
+                glm_weights_.decoder_layer_weights[i]->self_attention_weights.attention_output_weight.int4_kernel =
+                    get_ptr<int8_t>(quant_weights_[i + 1 * layer_num_]);
+                glm_weights_.decoder_layer_weights[i]->glu_ffn_weights.intermediate_weight[0].int4_kernel =
+                    get_ptr<int8_t>(quant_weights_[i + 2 * layer_num_]);
+                glm_weights_.decoder_layer_weights[i]->glu_ffn_weights.intermediate_weight[1].int4_kernel =
+                    get_ptr<int8_t>(quant_weights_[i + 3 * layer_num_]);
+                glm_weights_.decoder_layer_weights[i]->glu_ffn_weights.output_weight.int4_kernel =
+                    get_ptr<int8_t>(quant_weights_[i + 4 * layer_num_]);
+            }
+
+            if (dtype_id == 2 || dtype_id == 3) {
+                glm_weights_.decoder_layer_weights[i]->self_attention_weights.query_weight.quant_scale =
+                    get_ptr<T>(quant_scales_[i + 0 * layer_num_]);
+                glm_weights_.decoder_layer_weights[i]->self_attention_weights.attention_output_weight.quant_scale =
+                    get_ptr<T>(quant_scales_[i + 1 * layer_num_]);
+                glm_weights_.decoder_layer_weights[i]->glu_ffn_weights.intermediate_weight[0].quant_scale =
+                    get_ptr<T>(quant_scales_[i + 2 * layer_num_]);
+                glm_weights_.decoder_layer_weights[i]->glu_ffn_weights.intermediate_weight[1].quant_scale =
+                    get_ptr<T>(quant_scales_[i + 3 * layer_num_]);
+                glm_weights_.decoder_layer_weights[i]->glu_ffn_weights.output_weight.quant_scale =
+                    get_ptr<T>(quant_scales_[i + 4 * layer_num_]);
+            }
         }
 
-        glm_weights_.post_decoder_layernorm.gamma = get_ptr<T>(weights_[14 * layer_num_ + 0]);
-        glm_weights_.post_decoder_layernorm.beta = get_ptr<T>(weights_[14 * layer_num_ + 1]);
-        glm_weights_.pre_decoder_embedding_table = get_ptr<T>(weights_[14 * layer_num_ + 2]);
-        glm_weights_.post_decoder_embedding.kernel = get_ptr<T>(weights_[14 * layer_num_ + 2]);
+        glm_weights_.post_decoder_layernorm.gamma = get_ptr<T>(weights_[9 * layer_num_ + 0]);
+        glm_weights_.post_decoder_layernorm.beta = get_ptr<T>(weights_[9 * layer_num_ + 1]);
+        glm_weights_.pre_decoder_embedding_table = get_ptr<T>(weights_[9 * layer_num_ + 2]);
+        glm_weights_.post_decoder_embedding.kernel = get_ptr<T>(weights_[9 * layer_num_ + 2]);
 
         int device_id = 0;
         ft::check_cuda_error(cudaGetDevice(&device_id));
@@ -536,7 +580,10 @@ private:
     size_t tensor_para_size_;
     size_t pipeline_para_size_;
 
+    size_t dtype_id_;
     std::vector<th::Tensor> weights_;
+    std::vector<th::Tensor> quant_weights_;
+    std::vector<th::Tensor> quant_scales_;
 
     size_t tensor_para_rank_;
     ncclComm_t tensor_para_comm_;
@@ -583,7 +630,10 @@ public:
                   const int64_t end_id,
                   const int64_t tensor_para_size,
                   const int64_t pipeline_para_size,
-                  const vector<th::Tensor> weights);
+                  const int64_t dtype_id,
+                  const std::vector<th::Tensor> weights,
+                  const std::vector<th::Tensor> quant_weights,
+                  const std::vector<th::Tensor> quant_scales);
 
     ~GlmOp();
 

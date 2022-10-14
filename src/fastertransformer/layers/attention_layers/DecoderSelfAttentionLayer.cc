@@ -454,10 +454,10 @@ void DecoderSelfAttentionLayer<T>::forward(std::vector<fastertransformer::Tensor
 #endif
         if (int8_mode_ != 0 && batch_size <= 2) {
             FT_CHECK(attention_weights->query_weight.int8_kernel != NULL
-                     && attention_weights->query_weight.scale != NULL);
+                     && attention_weights->query_weight.quant_scale != NULL);
             int8WeightPerChannelLdkMultiplicationLauncher(attention_weights->query_weight.int8_kernel,
                                                           attention_input,
-                                                          attention_weights->query_weight.scale,
+                                                          attention_weights->query_weight.quant_scale,
                                                           qkv_buf_,
                                                           batch_size,
                                                           3 * local_hidden_units_,
@@ -524,10 +524,10 @@ void DecoderSelfAttentionLayer<T>::forward(std::vector<fastertransformer::Tensor
 #endif
         if (int8_mode_ != 0 && batch_size <= 2) {
             FT_CHECK(attention_weights->attention_output_weight.int8_kernel != NULL
-                     && attention_weights->attention_output_weight.scale != NULL);
+                     && attention_weights->attention_output_weight.quant_scale != NULL);
             int8WeightPerChannelLdkMultiplicationLauncher(attention_weights->attention_output_weight.int8_kernel,
                                                           context_buf_,
-                                                          attention_weights->attention_output_weight.scale,
+                                                          attention_weights->attention_output_weight.quant_scale,
                                                           attention_out,
                                                           batch_size,
                                                           d_model_,

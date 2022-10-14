@@ -48,6 +48,7 @@ private:
 
 protected:
     T* inter_buf_[2] = {nullptr, nullptr};
+    T* weights_buf_ = nullptr;
     size_t inter_size_;
     virtual void invokeAddBiasActivation(const int m, const GluFfnWeight<T>* glu_ffn_weights) = 0;
 

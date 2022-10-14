@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include "src/fastertransformer/kernels/quantization_int8_kernels.h"
 #include "src/fastertransformer/kernels/matrix_vector_multiplication.h"
 #include "src/fastertransformer/layers/attention_layers/BaseAttentionLayer.h"
 
@@ -55,6 +56,7 @@ protected:
     T* k_buf_ = nullptr;
     T* v_buf_ = nullptr;
     T* context_buf_ = nullptr;
+    T* weights_buf_ = nullptr;
     using BaseAttentionLayer<T>::stream_;
     using BaseAttentionLayer<T>::sparse_;
 

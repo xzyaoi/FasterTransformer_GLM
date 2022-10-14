@@ -31,7 +31,10 @@ GlmOp::GlmOp(const c10d::ProcessGroupNCCL& p,
                              const int64_t end_id,
                              const int64_t tensor_para_size,
                              const int64_t pipeline_para_size,
-                             const std::vector<th::Tensor> weights):
+                             const int64_t dtype_id,
+                             const std::vector<th::Tensor> weights,
+                             const std::vector<th::Tensor> quant_weights,
+                             const std::vector<th::Tensor> quant_scales):
     vocab_size_(vocab_size), st_(weights[0].scalar_type())
 {
     const c10d::ProcessGroupNCCL* p_ = &p;
@@ -56,7 +59,10 @@ GlmOp::GlmOp(const c10d::ProcessGroupNCCL& p,
                                      end_id,
                                      tensor_para_size,
                                      pipeline_para_size,
-                                     weights);
+                                     dtype_id,
+                                     weights,
+                                     quant_weights,
+                                     quant_scales);
             break;
         case at::ScalarType::Half:
             ftglm = new FTGlm<half>(h,
@@ -71,7 +77,10 @@ GlmOp::GlmOp(const c10d::ProcessGroupNCCL& p,
                                     end_id,
                                     tensor_para_size,
                                     pipeline_para_size,
-                                    weights);
+                                    dtype_id,
+                                    weights,
+                                    quant_weights,
+                                    quant_scales);
             break;
         default:
             throw std::runtime_error("Wrong Tensor type.");
@@ -137,9 +146,9 @@ std::vector<th::Tensor> GlmOp::forward(th::Tensor input_ids,
     th::Tensor output_ids = torch::empty({batch_size, beam_width, total_request_output_len},
                                          torch::dtype(torch::kInt32).device(torch::kCUDA).requires_grad(false));
     th::Tensor output_ids_buf = torch::empty({batch_size, beam_width, total_request_output_len},
-                                         torch::dtype(torch::kInt32).device(torch::kCUDA).requires_grad(false));
-    th::Tensor logits_buf =
-        torch::empty({batch_size, beam_width, vocab_size_}, torch::dtype(torch::kFloat32).device(torch::kCUDA).requires_grad(false));
+                                             torch::dtype(torch::kInt32).device(torch::kCUDA).requires_grad(false));
+    th::Tensor logits_buf = torch::empty({batch_size, beam_width, vocab_size_},
+                                         torch::dtype(torch::kFloat32).device(torch::kCUDA).requires_grad(false));
     th::Tensor parent_ids = torch::empty({total_request_output_len, batch_size, beam_width},
                                          torch::dtype(torch::kInt32).device(torch::kCUDA).requires_grad(false));
     th::Tensor sequence_lengths =
@@ -226,6 +235,9 @@ PYBIND11_MODULE(libth_glm, m) {
                                 int64_t,
                                 int64_t,
                                 int64_t,
+                                int64_t,
+                                std::vector<th::Tensor>,
+                                std::vector<th::Tensor>,
                                 std::vector<th::Tensor>>())
         .def("init_model", &torch_ext::GlmOp::init_model)
         .def("forward", &torch_ext::GlmOp::forward)
