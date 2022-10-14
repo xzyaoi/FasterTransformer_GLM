@@ -415,33 +415,39 @@ __global__ void int4WeightPerChannelLdkMultiplication(
     }
 
     for (int k_idx = tidx; k_idx < k_4; k_idx += blockDim.x) {
-        half2 input_val_0[m];
-        half2 input_val_1[m];
+        // half2 input_val_0[m];
+        // half2 input_val_1[m];
+        half4 input_val[m];
 #pragma unroll
         for (int m_i = 0; m_i < m; m_i++) {
-            const half4 input_val = input[k_idx + m_i * k_4];
-            input_val_0[m_i] = {input_val.x, input_val.y};
-            input_val_1[m_i] = {input_val.z, input_val.w};
+            // const half4 input_val = input[k_idx + m_i * k_4];
+            // input_val_0[m_i] = {input_val.x, input_val.y};
+            // input_val_1[m_i] = {input_val.z, input_val.w};
+            input_val[m_i] = input[k_idx + m_i * k_4];
         }
 #pragma unroll
         for (int i = 0; i < nPerThread; i++) {
             const char2 weight_val = weight[b_offset + i * k_4 + k_idx];
-            int8_t original, high, low;
+            int8_t original, high1, high2, low1, low2;
             original = weight_val.x;
-            high = original >> 4;
-            low = original << 4;
-            low = low >> 4;
-            const half2 weight_val_0 = {static_cast<half>(high), static_cast<half>(low)};
+            high1 = original >> 4;
+            low1 = original << 4;
+            low1 = low1 >> 4;
+            // const half2 weight_val_0 = {static_cast<half>(high), static_cast<half>(low)};
             original = weight_val.y;
-            high = original >> 4;
-            low = original << 4;
-            low = low >> 4;
-            const half2 weight_val_1 = {static_cast<half>(high), static_cast<half>(low)};
+            high2 = original >> 4;
+            low2 = original << 4;
+            low2 = low2 >> 4;
+            // const half2 weight_val_1 = {static_cast<half>(high), static_cast<half>(low)};
 #pragma unroll
             for (int m_i = 0; m_i < m; m_i++) {
-                const half2 weight_val_2 =
-                    __hadd2(__hmul2(input_val_0[m_i], weight_val_0), __hmul2(input_val_1[m_i], weight_val_1));
-                sum_list[m_i].data[i] += static_cast<float>(weight_val_2.x + weight_val_2.y);
+                // const half2 weight_val_2 =
+                //     __hadd2(__hmul2(input_val_0[m_i], weight_val_0), __hmul2(input_val_1[m_i], weight_val_1));
+                // sum_list[m_i].data[i] += static_cast<float>(weight_val_2.x + weight_val_2.y);
+                sum_list[m_i].data[i] += ((static_cast<float>(high1) * static_cast<float>(input_val[m_i].x))
+                                          + (static_cast<float>(low1) * static_cast<float>(input_val[m_i].y))
+                                          + (static_cast<float>(high2) * static_cast<float>(input_val[m_i].z))
+                                          + (static_cast<float>(low2) * static_cast<float>(input_val[m_i].w)));
             }
         }
     }
@@ -518,14 +524,14 @@ void int4WeightPerChannelLdkMultiplicationLauncher(const int8_t* weight,
             RUN4(2, half4, half);
         }
     }
+    else if (m == 3) {
+        if (std::is_same<T, half>::value) {
+            RUN4(3, half4, half);
+        }
+    }
     else if (m == 4) {
         if (std::is_same<T, half>::value) {
             RUN4(4, half4, half);
-        }
-    }
-    else if (m == 8) {
-        if (std::is_same<T, half>::value) {
-            RUN4(8, half4, half);
         }
     }
     else {
@@ -563,17 +569,34 @@ template void int4WeightPerChannelLdkMultiplicationLauncher(const int8_t* matrix
                                                             cudaStream_t stream);
 #endif
 
+// template<typename T>
+// __global__ void
+// int4WeightExtractionDevice(const int8_t* weight, const T* scale_list, T* output, const int n, const int k)
+// {
+//     for (int i = blockIdx.x * k + threadIdx.x, j = threadIdx.x; i < blockIdx.x * k + k; i += blockDim.x, j += blockDim.x) {
+//         int idx = j * n + blockIdx.x;
+//         int8_t original = weight[idx/2];
+//         int8_t high = original >> 4;
+//         int8_t low = original << 4;
+//         low = low >> 4;
+//         if(idx % 2 == 0)
+//             output[i] = T(high) * scale_list[j];
+//         else
+//             output[i] = T(low) * scale_list[j];
+//     }
+// }
+
 template<typename T>
 __global__ void
 int4WeightExtractionDevice(const int8_t* weight, const T* scale_list, T* output, const int n, const int k)
 {
     for (int i = blockIdx.x * k + threadIdx.x, j = threadIdx.x; i < blockIdx.x * k + k; i += blockDim.x, j += blockDim.x) {
-        int8_t original = weight[i];
+        int8_t original = weight[j * n + blockIdx.x];
         int8_t high = original >> 4;
         int8_t low = original << 4;
         low = low >> 4;
-        output[blockIdx.x * k * 2 + j] = T(high * 1.0f) * T(scale_list[j]);
-        output[blockIdx.x * k * 2 + k + j] = T(low * 1.0f) * T(scale_list[j]);
+        output[blockIdx.x * k * 2 + j] = T(high) * T(scale_list[j]);
+        output[blockIdx.x * k * 2 + k + j] = T(low) * T(scale_list[j]);
     }
 }
 
@@ -581,10 +604,11 @@ template<typename T>
 void invokeInt4WeightExtraction(
     const int8_t* weight, const T* scale_list, T* output, const int n, const int k, cudaStream_t stream)
 {
-    dim3 grid(n);
-    dim3 block(256);
+    const int n_div_2 = n / 2;
+    dim3 grid(n_div_2);
+    dim3 block(1024);
 
-    int4WeightExtractionDevice<T><<<grid, block, 0, stream>>>(weight, scale_list, output, n, k);
+    int4WeightExtractionDevice<T><<<grid, block, 0, stream>>>(weight, scale_list, output, n_div_2, k);
 }
 
 template void invokeInt4WeightExtraction(

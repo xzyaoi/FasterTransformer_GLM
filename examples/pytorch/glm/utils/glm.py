@@ -183,6 +183,8 @@ class GlmWeights(object):
         local_dim = local_dim // num_splits
         head_num = num_attention_heads
         size_per_head = hidden_dim // head_num
+        if self.dtype == 'int4':
+            size_per_head *= 2
         head_num = head_num // tensor_model_parallel_size
         if self.dtype in ['int8', 'int4']:
             scale.extend([module[f'transformer.layers.{i}.attention.query_key_value.weight_scale'].reshape(head_num, num_splits, size_per_head).permute(1, 0, 2).reshape(3, local_dim) for i in range(layer_num)])

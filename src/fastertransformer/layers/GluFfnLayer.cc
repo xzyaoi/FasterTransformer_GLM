@@ -100,7 +100,7 @@ void GluFfnLayer<T>::forward(std::vector<fastertransformer::Tensor>* output_tens
                         invokeInt4WeightExtraction(glu_ffn_weights->intermediate_weight[inter_buf_id].int4_kernel,
                                                 glu_ffn_weights->intermediate_weight[inter_buf_id].quant_scale,
                                                 weights_buf_,
-                                                hidden_units_ / 2,
+                                                hidden_units_,
                                                 inter_size_,
                                                 stream_);
                     }
@@ -136,7 +136,7 @@ void GluFfnLayer<T>::forward(std::vector<fastertransformer::Tensor>* output_tens
                                                                 inter_buf_[inter_buf_id],
                                                                 m,
                                                                 inter_size_,
-                                                                hidden_units_ / 2,
+                                                                hidden_units_,
                                                                 stream_);
                     }
                 }
@@ -201,7 +201,7 @@ void GluFfnLayer<T>::forward(std::vector<fastertransformer::Tensor>* output_tens
                     invokeInt4WeightExtraction(glu_ffn_weights->output_weight.int4_kernel,
                                                 glu_ffn_weights->output_weight.quant_scale,
                                                 weights_buf_,
-                                                inter_size_ / 2,
+                                                inter_size_,
                                                 hidden_units_,
                                                 stream_);
                 }
@@ -236,7 +236,7 @@ void GluFfnLayer<T>::forward(std::vector<fastertransformer::Tensor>* output_tens
                                                           output_tensor,
                                                           m,
                                                           hidden_units_,
-                                                          inter_size_ / 2,
+                                                          inter_size_,
                                                           stream_);
                 }
             }

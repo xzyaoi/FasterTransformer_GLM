@@ -519,7 +519,7 @@ void GlmDecoderSelfAttentionLayer<T>::forward(std::vector<fastertransformer::Ten
                     invokeInt4WeightExtraction(attention_weights->query_weight.int4_kernel,
                                                 attention_weights->query_weight.quant_scale,
                                                 weights_buf_,
-                                                d_model_ / 2,
+                                                d_model_,
                                                 3 * local_hidden_units_,
                                                 stream_);
                 }
@@ -555,7 +555,7 @@ void GlmDecoderSelfAttentionLayer<T>::forward(std::vector<fastertransformer::Ten
                                                           qkv_buf_,
                                                           batch_size,
                                                           3 * local_hidden_units_,
-                                                          d_model_ / 2,
+                                                          d_model_,
                                                           stream_);
                 }
                 
@@ -667,7 +667,7 @@ void GlmDecoderSelfAttentionLayer<T>::forward(std::vector<fastertransformer::Ten
                     invokeInt4WeightExtraction(attention_weights->attention_output_weight.int4_kernel,
                                                 attention_weights->attention_output_weight.quant_scale,
                                                 weights_buf_,
-                                                local_hidden_units_ / 2,
+                                                local_hidden_units_,
                                                 d_model_,
                                                 stream_);
                 }
@@ -704,7 +704,7 @@ void GlmDecoderSelfAttentionLayer<T>::forward(std::vector<fastertransformer::Ten
                                                           attention_out,
                                                           batch_size,
                                                           d_model_,
-                                                          local_hidden_units_ / 2,
+                                                          local_hidden_units_,
                                                           stream_);
                 }
             }

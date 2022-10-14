@@ -97,7 +97,7 @@ void GlmContextAttentionLayer<T>::forward(std::vector<fastertransformer::Tensor>
             invokeInt4WeightExtraction(attention_weights->query_weight.int4_kernel,
                                     attention_weights->query_weight.quant_scale,
                                     weights_buf_,
-                                    hidden_units_ / 2,
+                                    hidden_units_,
                                     3 * local_hidden_units_,
                                     stream_);
         }
@@ -277,7 +277,7 @@ void GlmContextAttentionLayer<T>::forward(std::vector<fastertransformer::Tensor>
                 invokeInt4WeightExtraction(attention_weights->attention_output_weight.int4_kernel,
                                         attention_weights->attention_output_weight.quant_scale,
                                         weights_buf_,
-                                        local_hidden_units_ / 2,
+                                        local_hidden_units_,
                                         hidden_units_,
                                         stream_);
             }
