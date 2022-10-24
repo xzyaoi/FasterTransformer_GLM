@@ -456,7 +456,7 @@ void GlmDecoderSelfAttentionLayer<T>::forward(std::vector<fastertransformer::Ten
     T* value_cache = (T*)(output_tensors->at(2).data);
 
     const int batch_size = input_tensors->at(0).shape[0];
-    const int beam_width = input_tensors->at(6).shape[1];
+    const int beam_width = input_tensors->at(7).shape[1];
     const int max_seq_len = output_tensors->at(1).shape[3];
     const int step = *(int*)(input_tensors->at(5).data);
 
