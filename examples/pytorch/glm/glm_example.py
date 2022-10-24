@@ -184,7 +184,7 @@ def main():
     contexts = []
     if args.sample_input_file:  # conditional case
         with open(args.sample_input_file, "r") as f:
-            contexts = f.read().splitlines()
+            contexts = [f.read().splitlines()[0]] * beam_width
             batch_size = min(len(contexts), max_batch_size)
         contexts = contexts[:batch_size]
     
@@ -203,7 +203,7 @@ def main():
         print("[WARNING] Checkpoint file not found. Model loading is skipped.")
     
     glm.init_model(output_len,
-                    beam_width,
+                    1,
                     top_k,
                     top_p,
                     beam_search_diversity_rate,
@@ -221,15 +221,15 @@ def main():
                     print('[INFO] Log probs of sentences:', cum_log_probs)
                 tokens_batch = tokens_batch.cpu().numpy()
                 for i, tokens in enumerate(tokens_batch):
-                    for beam_id in range(beam_width):
-                        res_context = ""
-                        token = tokens[beam_id][start_lengths[i]:]  # exclude context input from the output
-                        token = list(token)
-                        if 20002 in token:
-                            token = token[:token.index(20002)]
-                        if 150005 in token:
-                            token = token[:token.index(150005)]
-                        res.append(tokenizer.detokenize(token))
+                    # for beam_id in range(beam_width):
+                    beam_id = 0
+                    token = tokens[beam_id][start_lengths[i]:]  # exclude context input from the output
+                    token = list(token)
+                    if 20002 in token:
+                        token = token[:token.index(20002)]
+                    if 150005 in token:
+                        token = token[:token.index(150005)]
+                    res.append(tokenizer.detokenize(token))
         except:
             pass
         return res
