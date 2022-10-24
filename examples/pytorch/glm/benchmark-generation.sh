@@ -9,7 +9,7 @@ MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 #SAMPLING ARGS
 TEMP=1.0
 #If TOPK/TOPP are 0 it defaults to greedy sampling, top-k will also override top-p
-TOPK=1
+TOPK=5
 TOPP=0
 
 script_path=$(realpath $0)
@@ -38,7 +38,7 @@ python -m torch.distributed.launch $DISTRIBUTED_ARGS $script_dir/glm_example.py 
        --max_seq_len $MAXSEQLEN \
        --output_len 128 \
        --ckpt_path $CHECKPOINT_PATH \
+       --beam_width 4 \
        --max_batch_size 4 \
-       --sample_input_file $script_dir/input.txt \
-       --data_type int4
-       # --data_type fp16
+       --data_type int4 \
+       --sample_input_file $script_dir/input.txt
