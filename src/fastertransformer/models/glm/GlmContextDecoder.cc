@@ -321,8 +321,8 @@ void GlmContextDecoder<T>::forward(std::unordered_map<std::string, Tensor>* outp
                        data_type,
                        {(size_t)local_batch_size, (size_t)1, (size_t)seq_len, (size_t)seq_len},
                        attention_mask + local_batch_size * ite * seq_len * seq_len},
-                Tensor{MEMORY_CPU, TYPE_INT32, {(size_t)local_batch_size}, (int*)input_tensors->at("input_lengths").data},
-                Tensor{MEMORY_CPU, TYPE_INT32, {(size_t)local_batch_size}, (int*)input_tensors->at("mask_positions").data},
+                Tensor{MEMORY_GPU, TYPE_INT32, {(size_t)local_batch_size}, (int*)input_tensors->at("input_lengths").data},
+                Tensor{MEMORY_GPU, TYPE_INT32, {(size_t)local_batch_size}, (int*)input_tensors->at("mask_positions").data},
                 Tensor{MEMORY_CPU, TYPE_BOOL, {(size_t)1}, &is_final},
                 Tensor{MEMORY_CPU, TYPE_INT32, {(size_t)1}, &l}};
 

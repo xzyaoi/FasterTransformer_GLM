@@ -505,33 +505,33 @@ void GlmDecoderSelfAttentionLayer<T>::forward(std::vector<fastertransformer::Ten
                                   d_model_,  // k
                                   qkv_buf_,
                                   3 * local_hidden_units_ /* n */);
-            } else if(batch_size > 4) {
+            } else if(batch_size > MaxPerChannelLdkMultiplicationNum) {
                 FT_CHECK(attention_weights->query_weight.int8_kernel != NULL || attention_weights->query_weight.int4_kernel != NULL);
                 FT_CHECK(attention_weights->query_weight.quant_scale != NULL);
                 if(attention_weights->query_weight.int8_kernel != NULL) {
-                    invokeInt8WeightExtraction(attention_weights->query_weight.int8_kernel,
+                    invokeInt8WeightExtractionNoTrans(attention_weights->query_weight.int8_kernel,
                                                 attention_weights->query_weight.quant_scale,
                                                 weights_buf_,
-                                                d_model_,
                                                 3 * local_hidden_units_,
+                                                d_model_,
                                                 stream_);
                 } else {
-                    invokeInt4WeightExtraction(attention_weights->query_weight.int4_kernel,
+                    invokeInt4WeightExtractionNoTrans(attention_weights->query_weight.int4_kernel,
                                                 attention_weights->query_weight.quant_scale,
                                                 weights_buf_,
-                                                d_model_,
                                                 3 * local_hidden_units_,
+                                                d_model_,
                                                 stream_);
                 }
 
                 sync_check_cuda_error();
-                cublas_wrapper_->Gemm(CUBLAS_OP_N,
+                cublas_wrapper_->Gemm(CUBLAS_OP_T,
                                   CUBLAS_OP_N,
                                   3 * local_hidden_units_,  // n
                                   batch_size,
                                   d_model_,  // k
                                   weights_buf_,
-                                  3 * local_hidden_units_,  // n
+                                  d_model_,  // k
                                   attention_input,
                                   d_model_,  // k
                                   qkv_buf_,
@@ -653,33 +653,33 @@ void GlmDecoderSelfAttentionLayer<T>::forward(std::vector<fastertransformer::Ten
                                   attention_out,
                                   d_model_ /* n */);
             }
-            else if(batch_size > 4) {
+            else if(batch_size > MaxPerChannelLdkMultiplicationNum) {
                 FT_CHECK(attention_weights->attention_output_weight.int8_kernel != NULL || attention_weights->attention_output_weight.int4_kernel != NULL);
                 FT_CHECK(attention_weights->attention_output_weight.quant_scale != NULL);
                 if(attention_weights->attention_output_weight.int8_kernel != NULL) {
-                    invokeInt8WeightExtraction(attention_weights->attention_output_weight.int8_kernel,
+                    invokeInt8WeightExtractionNoTrans(attention_weights->attention_output_weight.int8_kernel,
                                                 attention_weights->attention_output_weight.quant_scale,
                                                 weights_buf_,
-                                                local_hidden_units_,
                                                 d_model_,
+                                                local_hidden_units_,
                                                 stream_);
                 } else {
-                    invokeInt4WeightExtraction(attention_weights->attention_output_weight.int4_kernel,
+                    invokeInt4WeightExtractionNoTrans(attention_weights->attention_output_weight.int4_kernel,
                                                 attention_weights->attention_output_weight.quant_scale,
                                                 weights_buf_,
-                                                local_hidden_units_,
                                                 d_model_,
+                                                local_hidden_units_,
                                                 stream_);
                 }
 
                 sync_check_cuda_error();
-                cublas_wrapper_->Gemm(CUBLAS_OP_N,
+                cublas_wrapper_->Gemm(CUBLAS_OP_T,
                                   CUBLAS_OP_N,
                                   d_model_,  // n
                                   batch_size,
                                   local_hidden_units_,  // k
                                   weights_buf_,
-                                  d_model_,  // n
+                                  local_hidden_units_,  // k
                                   context_buf_,
                                   local_hidden_units_,  // k
                                   attention_out,

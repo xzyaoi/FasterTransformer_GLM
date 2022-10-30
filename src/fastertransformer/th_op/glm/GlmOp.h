@@ -440,7 +440,9 @@ public:
     {
         const size_t request_batch_size = (size_t)input_ids.size(0);
         const size_t max_input_length = (size_t)input_ids.size(1);
-        const int total_output_len = (int)(max_input_length + request_output_len);
+        // const int total_output_len = (int)(max_input_length + request_output_len);
+        const int total_output_len = (int)output_ids.size(0);
+        
 
         input_tensors = std::unordered_map<std::string, ft::Tensor>{
             {"input_ids",

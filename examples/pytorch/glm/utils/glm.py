@@ -358,10 +358,6 @@ class Glm(nn.Module):
                 random_seed=0):
         if not self.build_model:
             self.cuda()
-        self.output_len = output_len
-        self.beam_width = beam_width
-        self.top_k = top_k
-        self.top_p = top_p
         self.model.init_model(output_len,
                                 beam_width,
                                 top_k,
@@ -376,9 +372,13 @@ class Glm(nn.Module):
                 start_ids,
                 start_lengths,
                 mask_positions,
+                output_len,
+                beam_width,
+                top_k,
+                top_p,
                 return_output_length=False,
                 return_cum_log_probs=0):
-        
+
         input_len = start_ids.size(1)
         assert input_len > 0, "input len must be larger than zero. For an unconditional case, use start_id as the first token."
         
@@ -396,12 +396,12 @@ class Glm(nn.Module):
         # output_ids, output_lengths = outputs
         # return output_ids
         
-        output_ids = torch.zeros([input_len + self.output_len,start_ids.shape[0],self.beam_width],dtype=torch.int32).cuda()
-        output_ids_buf = torch.zeros([input_len + self.output_len,start_ids.shape[0],self.beam_width],dtype=torch.int32).cuda()
-        logits_buf = torch.zeros([start_ids.shape[0],self.beam_width,self.vocab_size],dtype=torch.float32).cuda()
-        parent_ids = torch.zeros([input_len + self.output_len,start_ids.shape[0],self.beam_width],dtype=torch.int32).cuda()
-        sequence_lengths = torch.zeros([start_ids.shape[0],self.beam_width],dtype=torch.int32).cuda()
-        cum_log_probs = torch.zeros([start_ids.shape[0],self.beam_width],dtype=torch.float32).cuda()
+        output_ids = torch.zeros([input_len + output_len,start_ids.shape[0],beam_width],dtype=torch.int32).cuda()
+        output_ids_buf = torch.zeros([input_len + output_len,start_ids.shape[0],beam_width],dtype=torch.int32).cuda()
+        logits_buf = torch.zeros([start_ids.shape[0],beam_width,self.vocab_size],dtype=torch.float32).cuda()
+        parent_ids = torch.zeros([input_len + output_len,start_ids.shape[0],beam_width],dtype=torch.int32).cuda()
+        sequence_lengths = torch.zeros([start_ids.shape[0],beam_width],dtype=torch.int32).cuda()
+        cum_log_probs = torch.zeros([start_ids.shape[0],beam_width],dtype=torch.float32).cuda()
         
         self.model.encode(start_ids,
                             start_lengths,
@@ -414,18 +414,18 @@ class Glm(nn.Module):
                             cum_log_probs,
                             return_cum_log_probs)
                 
-        for i in range(input_len,input_len+self.output_len):
+        for i in range(input_len,input_len+output_len):
             self.model.decode(i)
             for j in range(start_ids.shape[0]):
                 logits = logits_buf[j][0]
-                if self.top_k >= 1:
-                    values, indices = torch.topk(logits, self.top_k)
+                if top_k >= 1:
+                    values, indices = torch.topk(logits, top_k)
                     values = values.cpu()
                     probs = torch.nn.functional.softmax(values, dim=-1)
                     pred = [indices[torch.multinomial(probs, num_samples=1)[0]]]
                     # pred = [logits.argmax()]
                 else:
-                    logits = top_k_logits(logits, self.top_k, self.top_p)
+                    logits = top_k_logits(logits, top_k, top_p)
                     probs = torch.nn.functional.softmax(logits.float(), dim=-1)
                     pred = torch.multinomial(probs, num_samples=1)
                 output_ids_buf[i][j][0] += pred[0]

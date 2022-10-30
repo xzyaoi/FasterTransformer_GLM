@@ -22,6 +22,8 @@
 
 namespace fastertransformer {
 
+#define MaxPerChannelLdkMultiplicationNum 8
+
 template<typename T>
 void int8WeightPerChannelLdkMultiplicationLauncher(const int8_t* weight,
                                                    const T* input,
@@ -44,7 +46,16 @@ void int4WeightPerChannelLdkMultiplicationLauncher(const int8_t* weight,
                                                    cudaStream_t stream);
 
 template<typename T>
-void invokeInt4WeightExtraction(const int8_t* weight,
+void invokeInt4WeightExtractionTrans(const int8_t* weight,
+                                const T* scale_list,
+                                T* output,
+                                const int n,
+                                const int k,
+                                cudaStream_t stream);
+
+
+template<typename T>
+void invokeInt4WeightExtractionNoTrans(const int8_t* weight,
                                 const T* scale_list,
                                 T* output,
                                 const int n,
@@ -52,7 +63,15 @@ void invokeInt4WeightExtraction(const int8_t* weight,
                                 cudaStream_t stream);
 
 template<typename T>
-void invokeInt8WeightExtraction(const int8_t* weight,
+void invokeInt8WeightExtractionTrans(const int8_t* weight,
+                                const T* scale_list,
+                                T* output,
+                                const int n,
+                                const int k,
+                                cudaStream_t stream);
+
+template<typename T>
+void invokeInt8WeightExtractionNoTrans(const int8_t* weight,
                                 const T* scale_list,
                                 T* output,
                                 const int n,

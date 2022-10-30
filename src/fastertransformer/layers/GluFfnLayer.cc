@@ -86,33 +86,33 @@ void GluFfnLayer<T>::forward(std::vector<fastertransformer::Tensor>* output_tens
                                     hidden_units_,
                                     inter_buf_[inter_buf_id],
                                     inter_size_);
-                } else if(m > 4) {
+                } else if(m > MaxPerChannelLdkMultiplicationNum) {
                     FT_CHECK(glu_ffn_weights->intermediate_weight[inter_buf_id].int8_kernel != NULL || glu_ffn_weights->intermediate_weight[inter_buf_id].int4_kernel != NULL);
                     FT_CHECK(glu_ffn_weights->intermediate_weight[inter_buf_id].quant_scale != NULL);
                     if(glu_ffn_weights->intermediate_weight[inter_buf_id].int8_kernel != NULL) {
-                        invokeInt8WeightExtraction(glu_ffn_weights->intermediate_weight[inter_buf_id].int8_kernel,
+                        invokeInt8WeightExtractionNoTrans(glu_ffn_weights->intermediate_weight[inter_buf_id].int8_kernel,
                                                 glu_ffn_weights->intermediate_weight[inter_buf_id].quant_scale,
                                                 weights_buf_,
-                                                hidden_units_,
                                                 inter_size_,
+                                                hidden_units_,
                                                 stream_);
                     } else {
-                        invokeInt4WeightExtraction(glu_ffn_weights->intermediate_weight[inter_buf_id].int4_kernel,
+                        invokeInt4WeightExtractionNoTrans(glu_ffn_weights->intermediate_weight[inter_buf_id].int4_kernel,
                                                 glu_ffn_weights->intermediate_weight[inter_buf_id].quant_scale,
                                                 weights_buf_,
-                                                hidden_units_,
                                                 inter_size_,
+                                                hidden_units_,
                                                 stream_);
                     }
 
                     sync_check_cuda_error();
-                    cublas_wrapper_->Gemm(CUBLAS_OP_N,
+                    cublas_wrapper_->Gemm(CUBLAS_OP_T,
                                     CUBLAS_OP_N,
                                     inter_size_,
                                     m,
                                     hidden_units_,
                                     weights_buf_,
-                                    inter_size_,
+                                    hidden_units_,
                                     input_tensor,
                                     hidden_units_,
                                     inter_buf_[inter_buf_id],
@@ -187,32 +187,32 @@ void GluFfnLayer<T>::forward(std::vector<fastertransformer::Tensor>* output_tens
                                   inter_size_,
                                   output_tensor,
                                   hidden_units_);
-            } else if(m > 4) {
+            } else if(m > MaxPerChannelLdkMultiplicationNum) {
                 FT_CHECK(glu_ffn_weights->output_weight.int8_kernel != NULL || glu_ffn_weights->output_weight.int4_kernel != NULL);
                 FT_CHECK(glu_ffn_weights->output_weight.quant_scale != NULL);
                 if(glu_ffn_weights->output_weight.int8_kernel != NULL){
-                    invokeInt8WeightExtraction(glu_ffn_weights->output_weight.int8_kernel,
+                    invokeInt8WeightExtractionNoTrans(glu_ffn_weights->output_weight.int8_kernel,
                                                 glu_ffn_weights->output_weight.quant_scale,
                                                 weights_buf_,
-                                                inter_size_,
                                                 hidden_units_,
+                                                inter_size_,
                                                 stream_);
                 } else {
-                    invokeInt4WeightExtraction(glu_ffn_weights->output_weight.int4_kernel,
+                    invokeInt4WeightExtractionNoTrans(glu_ffn_weights->output_weight.int4_kernel,
                                                 glu_ffn_weights->output_weight.quant_scale,
                                                 weights_buf_,
-                                                inter_size_,
                                                 hidden_units_,
+                                                inter_size_,
                                                 stream_);
                 }
                 sync_check_cuda_error();
-                cublas_wrapper_->Gemm(CUBLAS_OP_N,
+                cublas_wrapper_->Gemm(CUBLAS_OP_T,
                                 CUBLAS_OP_N,
                                 hidden_units_,
                                 m,
                                 inter_size_,
                                 weights_buf_,
-                                hidden_units_,
+                                inter_size_,
                                 inter_buf_[0],
                                 inter_size_,
                                 output_tensor,

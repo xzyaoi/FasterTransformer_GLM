@@ -1170,6 +1170,30 @@ __global__ void add_fusedQKV_bias_transpose_kernel(T* q_buf,
     *reinterpret_cast<Vec_t*>(&v_buf[dest_idx]) = v;
 }
 
+// Assume that the input length is 5, 10, add [sop] to [6, 11] as the start_lengths.
+// * does not matter
+// mask_id = 2 ([MASK])
+// 0 1 2 3 4 5 6 7 8 9 10(sop) 10 10 10
+// 0 1 2 3 4 5(sop) * * * * * 6 7 8
+// mask_id = -1 ([gMASK])
+// 0 1 2 3 4 5 6 7 8 9 2(sop) 2 2 2 2
+// 0 1 2 3 4 2(sop) * * * * * 2 2 2 2 2
+
+__inline__ __device__ int get_glm_step(const int step,
+                        const int mask_id,
+                        const int input_len,
+                        const int max_input_len)
+{
+    if(mask_id == -1) {
+        if((step + 1) < max_input_len) return step;
+        else return (step - max_input_len + input_len);
+    }
+    else {
+        if((step + 1) < input_len) return step;
+        else return mask_id;
+    }
+}
+
 // the index impl in glm is different from origin
 template<typename T>
 __global__ void glm_alpha_add_fusedQKV_bias_transpose_kernel(T* q_buf,
@@ -1209,7 +1233,10 @@ __global__ void glm_alpha_add_fusedQKV_bias_transpose_kernel(T* q_buf,
     const int dest_idx = size_per_head * seq_len * head_num * batch_idx + size_per_head * seq_len * head_idx
                          + size_per_head * seq_idx + tidx;
     
-    // printf("%d %d\n",tidx, (mask_positions[batch_idx] == -1 || (tidx + 1) < input_lengths[batch_idx]) ? tidx : mask_positions[batch_idx]);
+    const int input_len = input_lengths[batch_idx];
+    const int mask_id = mask_positions[batch_idx];
+    const int max_input_len = input_lengths[0];
+    // For a more convenient implementation, assume that input_lengths[0] must be the longest setence.
 
     mmha::apply_glm_rotary_embedding((uint16_t&)QKV[q_idx],
                                 (uint16_t&)qkv_bias[hidden_idx],
@@ -1224,7 +1251,8 @@ __global__ void glm_alpha_add_fusedQKV_bias_transpose_kernel(T* q_buf,
                                 (uint16_t&)qkv_bias[hidden_idx+n+64],
                                 (uint16_t&)k_buf[dest_idx+64],
                                 rotary_embedding_dim,
-                                (mask_positions[batch_idx] == -1 || (seq_idx + 1) < input_lengths[batch_idx]) ? seq_idx : mask_positions[batch_idx],
+                                // (seq_idx + 1) < input_len ? seq_idx : (mask_id == -1 ? seq_idx : mask_id),
+                                get_glm_step(seq_idx, mask_id, input_len, max_input_len),
                                 layer_id,
                                 tidx);
 
@@ -1270,6 +1298,11 @@ __global__ void glm_alpha_add_fusedQKV_bias_transpose_kernel(T* q_buf,
     const int dest_idx = size_per_head * seq_len * head_num * batch_idx + size_per_head * seq_len * head_idx
                          + size_per_head * seq_idx + tidx;
     
+    const int input_len = input_lengths[batch_idx];
+    const int mask_id = mask_positions[batch_idx];
+    const int max_input_len = input_lengths[0];
+    // As a matter of fact, that input_lengths[0] must be the longest setence.
+
     mmha::apply_glm_rotary_embedding((uint16_t&)QKV[q_idx],
                                 (uint16_t&)qkv_bias[hidden_idx],
                                 (uint16_t&)q_buf[dest_idx],
@@ -1283,7 +1316,8 @@ __global__ void glm_alpha_add_fusedQKV_bias_transpose_kernel(T* q_buf,
                                 (uint16_t&)qkv_bias[hidden_idx+n+64],
                                 (uint16_t&)k_buf[dest_idx+64],
                                 rotary_embedding_dim,
-                                (mask_positions[batch_idx] == -1 || (step + 1) < input_lengths[batch_idx]) ? step : mask_positions[batch_idx],
+                                // (step + 1) < input_len ? step : (mask_id == -1 ? step : mask_id),
+                                get_glm_step(step, mask_id, input_len, max_input_len),
                                 layer_id,
                                 tidx);
 

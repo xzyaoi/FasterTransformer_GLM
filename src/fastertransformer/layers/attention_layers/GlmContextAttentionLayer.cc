@@ -86,29 +86,29 @@ void GlmContextAttentionLayer<T>::forward(std::vector<fastertransformer::Tensor>
         FT_CHECK(attention_weights->query_weight.int8_kernel != NULL || attention_weights->query_weight.int4_kernel != NULL);
         FT_CHECK(attention_weights->query_weight.quant_scale != NULL);
         if(attention_weights->query_weight.int8_kernel != NULL) {
-            invokeInt8WeightExtraction(attention_weights->query_weight.int8_kernel,
+            invokeInt8WeightExtractionNoTrans(attention_weights->query_weight.int8_kernel,
                                     attention_weights->query_weight.quant_scale,
                                     weights_buf_,
-                                    hidden_units_,
                                     3 * local_hidden_units_,
+                                    hidden_units_,
                                     stream_);
         }
         else {
-            invokeInt4WeightExtraction(attention_weights->query_weight.int4_kernel,
+            invokeInt4WeightExtractionNoTrans(attention_weights->query_weight.int4_kernel,
                                     attention_weights->query_weight.quant_scale,
                                     weights_buf_,
-                                    hidden_units_,
                                     3 * local_hidden_units_,
+                                    hidden_units_,
                                     stream_);
         }
         sync_check_cuda_error();
-        cublas_wrapper_->Gemm(CUBLAS_OP_N,
+        cublas_wrapper_->Gemm(CUBLAS_OP_T,
                               CUBLAS_OP_N,
                               3 * local_hidden_units_,  // n
                               m,
                               hidden_units_,  // k
                               weights_buf_,
-                              3 * local_hidden_units_,  // n
+                              hidden_units_,  // k
                               attention_input,
                               hidden_units_,  // k
                               qkv_buf_,
@@ -267,28 +267,28 @@ void GlmContextAttentionLayer<T>::forward(std::vector<fastertransformer::Tensor>
             FT_CHECK(attention_weights->attention_output_weight.int8_kernel != NULL || attention_weights->attention_output_weight.int4_kernel != NULL);
             FT_CHECK(attention_weights->attention_output_weight.quant_scale != NULL);
             if(attention_weights->attention_output_weight.int8_kernel != NULL) {
-                invokeInt8WeightExtraction(attention_weights->attention_output_weight.int8_kernel,
+                invokeInt8WeightExtractionNoTrans(attention_weights->attention_output_weight.int8_kernel,
                                         attention_weights->attention_output_weight.quant_scale,
                                         weights_buf_,
-                                        local_hidden_units_,
                                         hidden_units_,
+                                        local_hidden_units_,
                                         stream_);
             } else {
-                invokeInt4WeightExtraction(attention_weights->attention_output_weight.int4_kernel,
+                invokeInt4WeightExtractionNoTrans(attention_weights->attention_output_weight.int4_kernel,
                                         attention_weights->attention_output_weight.quant_scale,
                                         weights_buf_,
-                                        local_hidden_units_,
                                         hidden_units_,
+                                        local_hidden_units_,
                                         stream_);
             }
             sync_check_cuda_error();
-            cublas_wrapper_->Gemm(CUBLAS_OP_N,
+            cublas_wrapper_->Gemm(CUBLAS_OP_T,
                                   CUBLAS_OP_N,
                                   hidden_units_,
                                   m,
                                   local_hidden_units_,
                                   weights_buf_,
-                                  hidden_units_,
+                                  local_hidden_units_,
                                   qkv_buf_3_,
                                   local_hidden_units_,
                                   attention_out,
