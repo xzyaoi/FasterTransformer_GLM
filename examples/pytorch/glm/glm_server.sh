@@ -24,7 +24,7 @@ DISTRIBUTED_ARGS="--nproc_per_node $MPSIZE \
                   --master_addr localhost \
                   --master_port $MASTER_PORT"
 
-CHECKPOINT_PATH="<your checkpoint path>"
+CHECKPOINT_PATH="/checkpoints"
 
 python -m torch.distributed.launch $DISTRIBUTED_ARGS $script_dir/glm_server.py \
        --world_size $MPSIZE \

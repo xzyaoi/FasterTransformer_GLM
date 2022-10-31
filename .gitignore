@@ -6,3 +6,5 @@ __pycache__/
 .vscode
 ./translation
 .cache
+COMMIT_INFO
+SM_NUMBER
