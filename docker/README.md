@@ -15,3 +15,4 @@ docker run -it --rm --gpus all -p 5000:5000 -v <your path to>/checkpoints/glm-13
 ```bash
 python3 examples/pytorch/glm/glm_server_test.py
 ```
+
