@@ -2,19 +2,13 @@
 
 CUDA_LAUNCH_BLOCKING=1
 
-MPSIZE=4
+MPSIZE=$(ls $CHECKPOINT_PATH | grep mp_rank_ | sort -r | head -n 1 | tr -cd '[0-9]')
+MPSIZE=$(expr $MPSIZE + 1)
 MAXSEQLEN=10000
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 
-#SAMPLING ARGS
-TEMP=1.0
-#If TOPK/TOPP are 0 it defaults to greedy sampling, top-k will also override top-p
-TOPK=5
-TOPP=0
-
 script_path=$(realpath $0)
 script_dir=$(dirname $script_path)
-
 
 OPTIONS_NCCL="NCCL_DEBUG=VERSION NCCL_IB_DISABLE=0 NCCL_NET_GDR_LEVEL=2 CUDA_LAUNCH_BLOCKING=0"
 
@@ -24,12 +18,10 @@ DISTRIBUTED_ARGS="--nproc_per_node $MPSIZE \
                   --master_addr localhost \
                   --master_port $MASTER_PORT"
 
-CHECKPOINT_PATH="/checkpoints"
-
 python -m torch.distributed.launch $DISTRIBUTED_ARGS $script_dir/glm_server.py \
        --world_size $MPSIZE \
        --tensor_para_size $MPSIZE \
        --pipeline_para_size 1 \
        --max_seq_len $MAXSEQLEN \
        --ckpt_path $CHECKPOINT_PATH \
-       --data_type int4
+       --data_type $DATA_TYPE
