@@ -21,7 +21,8 @@ class _IceTokenizer(AbstractTokenizer):
         except ImportError:
             pass
         self.num_tokens = 150000
-        self.set_special_tokens(['MASK', 'gMASK', 'sMASK', 'eod', 'sop', 'eop', 'ENC', 'dBLOCK'] + ['<t>'] + [f'<blank_{i}>' for i in range(2, max_blank_len + 1)])
+        self.add_special_tokens(['[MASK]', '[gMASK]', '[sMASK]', 'eod', 'sop', 'eop', 'ENC', 'dBLOCK'] + ['<t>'] + [f'<blank_{i}>' for i in range(2, max_blank_len + 1)])
+
         self.sentence_end_decoder = {20007: '.', 20031: '？', 20035: '！', 20027: '；', 20012: ':', 83823: '。', 145670: '…'}
 
         self.special_tokens['eos'] = 20002
