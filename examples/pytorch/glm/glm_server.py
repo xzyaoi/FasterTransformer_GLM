@@ -286,7 +286,7 @@ if __name__ == "__main__":
                         1,
                         topk,
                         topp,
-                        temperature)
+                        temperature=temperature)
         res = get_res(tokens_batch, start_lengths)
         if torch.distributed.get_rank() == 0:
             print(res)
