@@ -377,7 +377,8 @@ class Glm(nn.Module):
                 top_k,
                 top_p,
                 return_output_length=False,
-                return_cum_log_probs=0):
+                return_cum_log_probs=0,
+                temperature=1.0):
 
         input_len = start_ids.size(1)
         assert input_len > 0, "input len must be larger than zero. For an unconditional case, use start_id as the first token."
@@ -418,6 +419,7 @@ class Glm(nn.Module):
             self.model.decode(i)
             for j in range(start_ids.shape[0]):
                 logits = logits_buf[j][0]
+                logits = logits / temperature
                 if top_k >= 1:
                     values, indices = torch.topk(logits, top_k)
                     values = values.cpu()

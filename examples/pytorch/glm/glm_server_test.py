@@ -10,7 +10,7 @@ texts = "\n".join([
         "The Starry Night is an oil-on-canvas painting by [MASK] in June 1889.",
         "三亚位于海南岛的最南端,是中国最南部的热带滨海旅游城市",
         "I have a dream ",
-    ]*20)
+    ])
 
 # If TOPK/TOPP are 0 it defaults to greedy sampling, top-k will also override top-p
 data = {
