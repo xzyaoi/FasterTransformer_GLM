@@ -2,8 +2,11 @@
 
 CUDA_LAUNCH_BLOCKING=1
 
-MPSIZE=$(ls $CHECKPOINT_PATH | grep mp_rank_ | sort -r | head -n 1 | tr -cd '[0-9]')
-MPSIZE=$(expr $MPSIZE + 1)
+if [ x"${MPSIZE}" == "x" ]; then
+    MPSIZE=$(ls $CHECKPOINT_PATH | grep mp_rank_ | sort -r | head -n 1 | tr -cd '[0-9]')
+    MPSIZE=$(expr $MPSIZE + 1)
+fi
+
 MAXSEQLEN=10000
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 

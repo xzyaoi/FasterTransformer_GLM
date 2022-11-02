@@ -18,6 +18,7 @@ data = {
     "out_seq_length": 64,
     "topk": 1,
     "topp": 0,
+    "temperature": 0.9,
     "seed": 42
 }
 
