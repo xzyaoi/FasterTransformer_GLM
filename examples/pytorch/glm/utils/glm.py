@@ -374,11 +374,7 @@ class Glm(nn.Module):
                 mask_positions,
                 output_len,
                 beam_width,
-                top_k,
-                top_p,
-                return_output_length=False,
-                return_cum_log_probs=0,
-                temperature=1.0):
+                strategy):
 
         input_len = start_ids.size(1)
         assert input_len > 0, "input len must be larger than zero. For an unconditional case, use start_id as the first token."
@@ -396,13 +392,15 @@ class Glm(nn.Module):
         
         # output_ids, output_lengths = outputs
         # return output_ids
+
+        batch_size = start_ids.shape[0]
         
-        output_ids = torch.zeros([input_len + output_len,start_ids.shape[0],beam_width],dtype=torch.int32).cuda()
-        output_ids_buf = torch.zeros([input_len + output_len,start_ids.shape[0],beam_width],dtype=torch.int32).cuda()
-        logits_buf = torch.zeros([start_ids.shape[0],beam_width,self.vocab_size],dtype=torch.float32).cuda()
-        parent_ids = torch.zeros([input_len + output_len,start_ids.shape[0],beam_width],dtype=torch.int32).cuda()
-        sequence_lengths = torch.zeros([start_ids.shape[0],beam_width],dtype=torch.int32).cuda()
-        cum_log_probs = torch.zeros([start_ids.shape[0],beam_width],dtype=torch.float32).cuda()
+        output_ids = torch.zeros([input_len + output_len,batch_size,1],dtype=torch.int32).cuda()
+        output_ids_buf = torch.zeros([input_len + output_len,batch_size,1],dtype=torch.int32).cuda()
+        logits_buf = torch.zeros([batch_size,1,self.vocab_size],dtype=torch.float32).cuda()
+        parent_ids = torch.zeros([input_len + output_len,batch_size,1],dtype=torch.int32).cuda()
+        sequence_lengths = torch.zeros([batch_size,1],dtype=torch.int32).cuda()
+        cum_log_probs = torch.zeros([batch_size,1],dtype=torch.float32).cuda()
         
         self.model.encode(start_ids,
                             start_lengths,
@@ -413,27 +411,31 @@ class Glm(nn.Module):
                             parent_ids,
                             sequence_lengths,
                             cum_log_probs,
-                            return_cum_log_probs)
-                
+                            0)
+        
+        tokens = start_ids.reshape(batch_size // beam_width, beam_width, -1)
         for i in range(input_len,input_len+output_len):
             self.model.decode(i)
-            for j in range(start_ids.shape[0]):
-                logits = logits_buf[j][0]
-                logits = logits / temperature
-                if top_k >= 1:
-                    values, indices = torch.topk(logits, top_k)
-                    values = values.cpu()
-                    probs = torch.nn.functional.softmax(values, dim=-1)
-                    pred = [indices[torch.multinomial(probs, num_samples=1)[0]]]
-                    # pred = [logits.argmax()]
-                else:
-                    logits = top_k_logits(logits, top_k, top_p)
-                    probs = torch.nn.functional.softmax(logits.float(), dim=-1)
-                    pred = torch.multinomial(probs, num_samples=1)
-                output_ids_buf[i][j][0] += pred[0]
+            logits = logits_buf.reshape(batch_size // beam_width, beam_width, -1)
+            tokens = strategy.forward(logits, tokens)
+            for j in range(batch_size):
+                # logits = logits_buf[j][0]
+                # logits = logits / temperature
+                # if top_k >= 1:
+                #     values, indices = torch.topk(logits, top_k)
+                #     values = values.cpu()
+                #     probs = torch.nn.functional.softmax(values, dim=-1)
+                #     pred = [indices[torch.multinomial(probs, num_samples=1)[0]]]
+                #     # pred = [logits.argmax()]
+                # else:
+                #     logits = top_k_logits(logits, top_k, top_p)
+                #     probs = torch.nn.functional.softmax(logits.float(), dim=-1)
+                #     pred = torch.multinomial(probs, num_samples=1)
+                output_ids_buf[i][j][0] += tokens[j // beam_width][j % beam_width][-1]
                 sequence_lengths[j][0] += 1
-                
-        return output_ids_buf.permute(1,2,0)
+
+        return strategy.finalize(tokens)        
+        # return output_ids_buf.permute(1,2,0)
 
     def set_input_tensor(self, input_tensor):
         """Set input tensor to be used instead of forward()'s input.

@@ -24,6 +24,8 @@ sys.setdlopenflags(sys.getdlopenflags() ^ ctypes.RTLD_GLOBAL)
 from icetk_glm_130B import _IceTokenizer
 tokenizer = _IceTokenizer()
 
+from utils.strategies import BaseStrategy, BeamSearchStrategy
+
 torch.set_printoptions(precision=20)
 
 parser = argparse.ArgumentParser()
@@ -173,7 +175,6 @@ def tokenize(contexts):
         start_ids, mask_positions = zip(*[encode(c) for c in contexts])
         start_lengths = torch.IntTensor([len(ids) for ids in start_ids])
         start_ids = pad_sequence(start_ids, batch_first=True, padding_value=0)
-        print(start_lengths, torch.IntTensor([len(ids) for ids in start_ids]))
         return start_ids, start_lengths, torch.IntTensor(mask_positions)
     
     return get_ids(contexts)
@@ -204,6 +205,14 @@ def get_generate():
 
     contexts = config["text"].splitlines()
 
+    if config.get("num_beams"):
+        beam_width = config.get("num_beams")
+        new_contexts = []
+        for c in contexts:
+            for _ in range(beam_width):
+                new_contexts.append(c)
+        contexts = new_contexts
+
     start_ids, start_lengths, mask_positions = tokenize(contexts)
 
     args = {}
@@ -223,18 +232,17 @@ if __name__ == "__main__":
     def get_res(tokens_batch, start_lengths):
         res = []
         try:
+            beam_width = tokens_batch.shape[1]
             if tokens_batch is not None:
                 tokens_batch = tokens_batch.cpu().numpy()
                 for i, tokens in enumerate(tokens_batch):
-                    # for beam_id in range(beam_width):
-                    beam_id = 0
-                    token = list(tokens[beam_id][start_lengths[0]:]) # exclude context input from the output
-                    print(token, list(tokens[beam_id]))
-                    if 20002 in token:
-                        token = token[:token.index(20002)]
-                    if 150005 in token:
-                        token = token[:token.index(150005)]
-                    res.append(tokenizer.detokenize(token))
+                    for beam_id in range(beam_width):
+                        token = list(tokens[beam_id][start_lengths[0]:]) # exclude context input from the output
+                        if 20002 in token:
+                            token = token[:token.index(20002)]
+                        if 150005 in token:
+                            token = token[:token.index(150005)]
+                        res.append(tokenizer.detokenize(token))
         except:
             pass
         return res
@@ -262,31 +270,44 @@ if __name__ == "__main__":
         # return res
 
     def predict(start_ids, start_lengths, mask_positions, seed=1234, out_seq_length=200, min_gen_length=20, sampling_strategy='BaseStrategy', 
-    num_beams=4, length_penalty=0.9, no_repeat_ngram_size=3, 
+    num_beams=1, length_penalty=0.9, no_repeat_ngram_size=3, 
     temperature=1, topk=5, topp=0):
 
         if start_ids.size(1) + out_seq_length > max_seq_len:
             return ["length too long"]
-            
-
-#         global strategy
 
         if torch.distributed.get_rank() == 0:
             print('info', [start_ids, start_lengths, mask_positions, seed, out_seq_length, min_gen_length, sampling_strategy, num_beams, length_penalty, no_repeat_ngram_size, temperature, topk, topp])
             dist.broadcast_object_list([start_ids, start_lengths, mask_positions, seed, out_seq_length, min_gen_length, sampling_strategy, num_beams, length_penalty, no_repeat_ngram_size, temperature, topk, topp], src=0)
 
+        end_tokens = [tokenizer.get_command("eop"), tokenizer.get_command("eos")]
+        batch_size = start_ids.shape[0]
+
+        if sampling_strategy == "BaseStrategy":
+            strategy = BaseStrategy(batch_size=batch_size, temperature=temperature, top_k=topk, top_p=topp,
+                                    end_tokens=end_tokens)
+        elif sampling_strategy == "BeamSearchStrategy":
+            strategy = BeamSearchStrategy(
+                batch_size=batch_size // num_beams,
+                num_beams=num_beams,
+                length_penalty=length_penalty,
+                consider_end=True,
+                end_tokens=end_tokens,
+                no_repeat_ngram_size=no_repeat_ngram_size,
+                min_gen_length=min_gen_length,
+            )
+        else:
+            return [f"unknown strategy {sampling_strategy}"]
+
         
         torch.manual_seed(seed)
-
 
         tokens_batch = glm(start_ids,
                         start_lengths,
                         mask_positions,
                         out_seq_length,
-                        1,
-                        topk,
-                        topp,
-                        temperature=temperature)
+                        num_beams,
+                        strategy)
         res = get_res(tokens_batch, start_lengths)
         if torch.distributed.get_rank() == 0:
             print(res)

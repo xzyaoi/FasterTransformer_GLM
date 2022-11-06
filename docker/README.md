@@ -13,7 +13,7 @@ docker run -it --rm --gpus all --shm-size=10g -p 5000:5000 -e DATA_TYPE=int4 -e 
 ## run with ckpt
 
 ```bash
-docker run -it --rm --gpus all --shm-size=10g -p 5000:5000 -v <your path to checkpoints>/49300:/checkpoints -e DATA_TYPE=int4 ftglm:latest
+docker run -it --rm --gpus all --shm-size=10g -p 5000:5000 -v <your path to checkpoints>/49300:/checkpoints:ro -e DATA_TYPE=int4 ftglm:latest
 ```
 
 ## test
