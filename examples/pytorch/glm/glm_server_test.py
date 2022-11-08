@@ -11,21 +11,19 @@ texts = [
         "I have a dream that ",
     ]
 
-def test(texts, strategy = "BaseStrategy"):
-
-    texts = "\n".join(texts)
+def test(texts, strategy = "BaseStrategy", stop = []):
 
     # If TOPK/TOPP are 0 it defaults to greedy sampling, top-k will also override top-p
     data = {
-        "text": texts,
-        "out_seq_length": 64,
-        "topk": 0,
-        "topp": 0.9,
+        "prompt": texts,
+        "max_tokens": 64,
+        "min_tokens": 0,
+        "top_k": 3,
+        "top_p": 0,
         "temperature": 1,
         "seed": 42,
         "sampling_strategy": strategy,
         "num_beams": 4,
-        "min_gen_length": 0,
         "length_penalty": 0.9,
         "no_repeat_ngram_size": 3
     }
@@ -36,7 +34,7 @@ def test(texts, strategy = "BaseStrategy"):
 
     res = json.loads(res)
     print(res['text'], end='\n\n')
-    for generate, text in zip(res['text'],texts.splitlines()):
+    for generate, text in zip(res['text'],texts):
         generate.append('')
         generate = generate[0]
         generate = "\x1B[4m" + generate.replace("[[gMASK]]","") + "\x1B[0m"

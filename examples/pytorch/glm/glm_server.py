@@ -178,11 +178,15 @@ def get_generate():
         return make_response("Config can not be empty.", 500)
     config = json.loads(config)
 
-    contexts = config["text"].splitlines()
+    contexts = config["prompt"]
 
-    if config.get("num_beams"):
+    if isinstance(contexts, str):
+        contexts = [contexts]
+
+    if config.get("num_beams") and config.get("sampling_strategy") == "BeamSearchStrategy":
         beam_width = config.get("num_beams")
     else:
+        config["num_beams"] = 1
         beam_width = 1
 
     start_ids, _, _ = tokenize(contexts, pad = False)
@@ -198,7 +202,7 @@ def get_generate():
     start_ids, start_lengths, mask_positions = tokenize(contexts)
 
     args = {}
-    for i in ["seed", "out_seq_length", "min_gen_length", "sampling_strategy", "num_beams", "length_penalty", "no_repeat_ngram_size", "temperature", "topk", "topp"]:
+    for i in ["seed", "max_tokens", "min_tokens", "sampling_strategy", "num_beams", "length_penalty", "no_repeat_ngram_size", "temperature", "top_k", "top_p"]:
         if config.get(i) != None:
             args[i] = config.get(i)
 
@@ -232,22 +236,22 @@ if __name__ == "__main__":
                     pass
         return res
 
-    def predict(start_ids, start_lengths, mask_positions, seed=42, out_seq_length=64, min_gen_length=0, sampling_strategy='BaseStrategy', 
+    def predict(start_ids, start_lengths, mask_positions, seed=42, max_tokens=64, min_tokens=0, sampling_strategy='BaseStrategy', 
     num_beams=1, length_penalty=0.9, no_repeat_ngram_size=3, 
-    temperature=1, topk=5, topp=0):
+    temperature=1, top_k=5, top_p=0):
 
-        if start_ids.size(1) + out_seq_length > max_seq_len:
+        if start_ids.size(1) + max_tokens > max_seq_len:
             return ["length too long"]
 
         if torch.distributed.get_rank() == 0:
-            print('info', [start_ids, start_lengths, mask_positions, seed, out_seq_length, min_gen_length, sampling_strategy, num_beams, length_penalty, no_repeat_ngram_size, temperature, topk, topp])
-            dist.broadcast_object_list([start_ids, start_lengths, mask_positions, seed, out_seq_length, min_gen_length, sampling_strategy, num_beams, length_penalty, no_repeat_ngram_size, temperature, topk, topp], src=0)
+            print('info', [start_ids, start_lengths, mask_positions, seed, max_tokens, min_tokens, sampling_strategy, num_beams, length_penalty, no_repeat_ngram_size, temperature, top_k, top_p])
+            dist.broadcast_object_list([start_ids, start_lengths, mask_positions, seed, max_tokens, min_tokens, sampling_strategy, num_beams, length_penalty, no_repeat_ngram_size, temperature, top_k, top_p], src=0)
 
         end_tokens = [tokenizer.get_command("eop"), tokenizer.get_command("eos")]
         batch_size = start_ids.shape[0]
 
         if sampling_strategy == "BaseStrategy":
-            strategy = BaseStrategy(batch_size=batch_size, temperature=temperature, top_k=topk, top_p=topp,
+            strategy = BaseStrategy(batch_size=batch_size, temperature=temperature, top_k=top_k, top_p=top_p,
                                     end_tokens=end_tokens)
         elif sampling_strategy == "BeamSearchStrategy":
             strategy = BeamSearchStrategy(
@@ -257,7 +261,7 @@ if __name__ == "__main__":
                 consider_end=True,
                 end_tokens=end_tokens,
                 no_repeat_ngram_size=no_repeat_ngram_size,
-                min_gen_length=min_gen_length,
+                min_tokens=min_tokens,
             )
         else:
             return [f"unknown strategy {sampling_strategy}"]
@@ -268,7 +272,7 @@ if __name__ == "__main__":
         tokens_batch = glm(start_ids,
                         start_lengths,
                         mask_positions,
-                        out_seq_length,
+                        max_tokens,
                         num_beams,
                         strategy)
 
@@ -286,8 +290,8 @@ if __name__ == "__main__":
             info = [None, None, None, None, None, None, None, None, None, None, None, None, None]
             dist.broadcast_object_list(info, src=0)
 
-            start_ids, start_lengths, mask_positions, seed, out_seq_length, min_gen_length, sampling_strategy, num_beams, length_penalty, no_repeat_ngram_size, temperature, topk, topp = info
+            start_ids, start_lengths, mask_positions, seed, max_tokens, min_tokens, sampling_strategy, num_beams, length_penalty, no_repeat_ngram_size, temperature, top_k, top_p = info
 
-            predict(start_ids, start_lengths, mask_positions, seed, out_seq_length, min_gen_length, sampling_strategy, 
+            predict(start_ids, start_lengths, mask_positions, seed, max_tokens, min_tokens, sampling_strategy, 
                 num_beams, length_penalty, no_repeat_ngram_size, 
-                temperature, topk, topp)
+                temperature, top_k, top_p)

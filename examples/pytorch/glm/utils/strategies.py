@@ -104,7 +104,7 @@ class BeamSearchStrategy:
         end_tokens=[],
         invalid_slices=[],
         no_repeat_ngram_size=0,
-        min_gen_length=0,
+        min_tokens=0,
         deterministic=False,
     ):
         self.batch_size = batch_size
@@ -112,7 +112,7 @@ class BeamSearchStrategy:
         self.length_penalty = length_penalty
         self.end_tokens = end_tokens
         self.ngram = no_repeat_ngram_size
-        self.min_gen_length = min_gen_length
+        self.min_tokens = min_tokens
         self.invalid_slices = invalid_slices
         self.consider_end = consider_end
         self.deterministic = deterministic
@@ -147,7 +147,7 @@ class BeamSearchStrategy:
         logits = logits.float()
         for invalid_slice in self.invalid_slices:
             logits[..., invalid_slice] = -65504
-        if self.min_gen_length > self.length_generated:
+        if self.min_tokens > self.length_generated:
             for end_token in self.end_tokens:
                 logits[..., end_token] = -65504
         if self.ngram > 0 and seq_len > self.ngram:
@@ -266,7 +266,7 @@ if __name__ == "__main__":
         sampling_strategy = "BeamSearchStrategy"
         length_penalty = 1.0
         no_repeat_ngram_size = 20
-        min_gen_length = 20
+        min_tokens = 20
         num_beams = 4
         batch_size = 5
 
@@ -284,7 +284,7 @@ if __name__ == "__main__":
             consider_end=True,
             end_tokens=end_tokens,
             no_repeat_ngram_size=args.no_repeat_ngram_size,
-            min_gen_length=args.min_gen_length,
+            min_tokens=args.min_tokens,
         )
     else:
         raise ValueError(f"unknown strategy {args.sampling_strategy}")
