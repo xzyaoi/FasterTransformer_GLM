@@ -18,6 +18,15 @@ docker run -it --rm --gpus all --shm-size=10g -p 5000:5000 -v <your path to chec
 
 ## test
 
+### benchmark
+
 ```bash
 python3 examples/pytorch/glm/glm_server_test.py
+```
+
+### web demo
+
+```bash
+pip install gradio
+python3 examples/pytorch/glm/glm_server_frontend_test.py
 ```
