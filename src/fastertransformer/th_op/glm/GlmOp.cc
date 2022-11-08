@@ -126,6 +126,8 @@ void GlmOp::init_model(const int64_t output_len_,
 std::vector<th::Tensor> GlmOp::forward(th::Tensor input_ids,
                                                th::Tensor input_lengths,
                                                th::Tensor mask_positions,
+                                               th::Tensor key_cache,
+                                               th::Tensor value_cache,
                                                const int64_t return_cum_log_probs)
 {
     CHECK_TH_CUDA(input_ids);
@@ -165,6 +167,8 @@ std::vector<th::Tensor> GlmOp::forward(th::Tensor input_ids,
                    parent_ids,
                    sequence_lengths,
                    cum_log_probs,
+                   key_cache,
+                   value_cache,
                    return_cum_log_probs);
     if (return_cum_log_probs > 0) {
         return std::vector<th::Tensor>{output_ids, sequence_lengths, cum_log_probs};
@@ -182,6 +186,8 @@ std::vector<th::Tensor> GlmOp::encode(th::Tensor input_ids,
                                                th::Tensor parent_ids,
                                                th::Tensor sequence_lengths,
                                                th::Tensor cum_log_probs,
+                                               th::Tensor key_cache,
+                                               th::Tensor value_cache,
                                                const int64_t return_cum_log_probs)
 {
     CHECK_TH_CUDA(input_ids);
@@ -206,14 +212,18 @@ std::vector<th::Tensor> GlmOp::encode(th::Tensor input_ids,
                    parent_ids,
                    sequence_lengths,
                    cum_log_probs,
+                   key_cache,
+                   value_cache,
                    return_cum_log_probs);
 
     return std::vector<th::Tensor>{};
 }
 
-std::vector<th::Tensor> GlmOp::decode(const int64_t step)
+std::vector<th::Tensor> GlmOp::decode(th::Tensor key_cache,
+                                    th::Tensor value_cache,
+                                    const int64_t step)
 {
-    ftglm->decode(step);
+    ftglm->decode(key_cache,value_cache,step);
     return std::vector<th::Tensor>{};
 }
 

@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# This section was designed for C++ interfaces and is now depressed.
+
 import argparse
 import configparser
 from datetime import datetime

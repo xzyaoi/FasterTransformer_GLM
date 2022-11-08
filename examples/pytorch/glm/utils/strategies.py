@@ -31,7 +31,7 @@ def top_k_top_p_filtering(
         indices_to_remove = logits < torch.topk(logits, top_k)[0][..., -1, None]
         logits = logits.masked_fill(indices_to_remove, filter_value)
 
-    if 0 < top_p <= 1.0:
+    elif 0 < top_p <= 1.0:
         sorted_logits, sorted_indices = torch.sort(logits, descending=True)
         cumulative_probs = sorted_logits.softmax(dim=-1).cumsum(dim=-1)
 
@@ -67,7 +67,7 @@ class BaseStrategy:
     def is_done(self) -> bool:
         return self._is_done.all()
 
-    def forward(self, logits, tokens, temperature=None):
+    def forward(self, logits, tokens, key_cache, value_cache, temperature=None):
         logits = logits.view(-1, logits.size(-1))
         batch_size = tokens.shape[0]
         if temperature is None:
@@ -87,7 +87,7 @@ class BaseStrategy:
             elif pred[i].item() in self.end_tokens:
                 self._is_done[i] = True
         tokens = torch.cat((tokens, pred.view(tokens.shape[:-1] + (1,))), dim=-1)
-        return tokens
+        return tokens, key_cache, value_cache
 
     def finalize(self, tokens):
         self._is_done = np.zeros(self.batch_size, dtype=np.bool)
@@ -141,7 +141,7 @@ class BeamSearchStrategy:
     def is_done(self) -> bool:
         return self._is_done.all()
 
-    def forward(self, logits, tokens):
+    def forward(self, logits, tokens, key_cache, value_cache):
         batch_size, num_beams, vocab_size = logits.shape
         seq_len = tokens.shape[-1]
         logits = logits.float()
@@ -182,17 +182,21 @@ class BeamSearchStrategy:
         next_tokens = next_tokens % vocab_size
 
         # select out end beams or continue beams
-        beam_continue_batch, score_continue_batch = [], []
+        beam_continue_batch, score_continue_batch, k_cache_continue_batch, v_cache_continue_batch = [], [], [], []
         for batch_idx in range(batch_size):
             beam_continue = []
             scores_continue = []
             bans_continue = []
+            k_cache_contiue = []
+            v_cache_contiue = []
             for i in range(len(next_tokens[batch_idx])):
                 beam = torch.cat((tokens[batch_idx, next_indices[batch_idx, i]], next_tokens[batch_idx, i : i + 1]))
                 if not self._is_done[batch_idx] and int(next_tokens[batch_idx, i]) in self.end_tokens:
                     self._add_end_beams(next_token_scores[batch_idx, i], beam, batch_idx)
                 elif len(beam_continue) < self.num_beams:
                     beam_continue.append(beam)
+                    k_cache_contiue.append(key_cache[:, batch_idx, next_indices[batch_idx, i]])
+                    v_cache_contiue.append(value_cache[:, batch_idx, next_indices[batch_idx, i]])
                     # update caches
                     scores_continue.append(next_token_scores[batch_idx, i])
                     if self.ngram > 0:
@@ -204,9 +208,16 @@ class BeamSearchStrategy:
                 else:
                     break
             beam_continue_batch.append(torch.stack(beam_continue))
+            k_cache_continue_batch.append(torch.stack(k_cache_contiue, dim=1))
+            v_cache_continue_batch.append(torch.stack(v_cache_contiue, dim=1))
             score_continue_batch.append(scores_continue)
             self.cached_beam_ngram_bans[batch_idx] = bans_continue
         tokens = torch.stack(beam_continue_batch)
+        # print(k_cache_continue_batch[0].shape)
+        key_cache = torch.stack(k_cache_continue_batch, dim=1)
+        value_cache = torch.stack(v_cache_continue_batch, dim=1)
+        # print(key_cache.shape)
+
         self.cached_beam_scores = torch.tensor(score_continue_batch, device=logits.device)
         self.length_generated += 1
         for batch_idx in range(self.batch_size):
@@ -219,7 +230,7 @@ class BeamSearchStrategy:
             ):  # We're done if none of current tokens will better than the worst in end_beams
                 self._is_done[batch_idx] = True
 
-        return tokens
+        return tokens, key_cache, value_cache
 
     def finalize(self, tokens):
         if self.consider_end:
@@ -228,10 +239,7 @@ class BeamSearchStrategy:
                 if not self._is_done[batch_idx]:
                     for i in range(num_beams):
                         self._add_end_beams(self.cached_beam_scores[batch_idx, i], tokens[batch_idx, i], batch_idx)
-            ret = []
-            for i in range(batch_size):
-                ret.append(torch.stack(self.end_beams[i]))
-            ret = torch.stack(ret)
+            ret = self.end_beams[:batch_size]
         else:
             ret = tokens
         self._init_cache()

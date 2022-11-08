@@ -105,8 +105,8 @@ void Glm<T>::allocateBuffer(size_t batch_size, size_t beam_width, size_t max_seq
     finished_buf_ = (bool*)(allocator_->reMalloc(finished_buf_, sizeof(bool) * batchxbeam, false));
     h_finished_buf_ = new bool[batchxbeam];
 
-    key_cache_ = (T*)(allocator_->reMalloc(key_cache_, sizeof(T) * self_cache_size * 2, true));
-    value_cache_ = key_cache_ + self_cache_size;
+    // key_cache_ = (T*)(allocator_->reMalloc(key_cache_, sizeof(T) * self_cache_size * 2, true));
+    // value_cache_ = key_cache_ + self_cache_size;
     if (beam_width > 1) {
         cache_indirections_[0] =
             (int*)(allocator_->reMalloc(cache_indirections_[0], sizeof(int) * batchxbeam * max_seq_len * 2, true));
@@ -153,7 +153,7 @@ void Glm<T>::freeBuffer()
         allocator_->free(finished_buf_);
         delete[] h_finished_buf_;
 
-        allocator_->free(key_cache_);
+        // allocator_->free(key_cache_);
         if (cache_indirections_[0] != nullptr) {
             allocator_->free(cache_indirections_[0]);
         }
@@ -375,11 +375,13 @@ void Glm<T>::encode(std::unordered_map<std::string, Tensor>* output_tensors,
     max_prefix_soft_prompt_length = input_tensors->count("prefix_soft_prompt_embedding") ?
                                                      input_tensors->at("prefix_soft_prompt_embedding").shape[1] :
                                                      0;
-    max_output_seq_len = *std::max_element(input_tensors->at("max_output_seq_len").getPtr<int>(),
-                                                        input_tensors->at("max_output_seq_len").getPtr<int>()
-                                                            + input_tensors->at("max_output_seq_len").shape[0])
-                                      + (max_input_length == 0 ? 1 : 0)  // additional 1 to put start token
-                                      + max_prefix_soft_prompt_length;
+    // max_output_seq_len = *std::max_element(input_tensors->at("max_output_seq_len").getPtr<int>(),
+    //                                                     input_tensors->at("max_output_seq_len").getPtr<int>()
+    //                                                         + input_tensors->at("max_output_seq_len").shape[0])
+    //                                   + (max_input_length == 0 ? 1 : 0)  // additional 1 to put start token
+    //                                   + max_prefix_soft_prompt_length;
+
+    max_output_seq_len = *(int*)input_tensors->at("max_output_seq_len").data; // to get a stable shape
     
     max_seq_len = max_output_seq_len;
     allocateBuffer(batch_size, beam_width, max_seq_len, max_input_length + max_prefix_soft_prompt_length);
@@ -408,6 +410,9 @@ void Glm<T>::encode(std::unordered_map<std::string, Tensor>* output_tensors,
                                                     local_head_num_,
                                                     max_output_seq_len,
                                                     size_per_head_};
+    
+    key_cache_ = (T*)output_tensors->at("key_cache").data;
+    value_cache_ = (T*)output_tensors->at("value_cache").data;
 
     // initialize the output ids and parent ids
     cudaMemsetAsync(output_ids_buf_, 0, sizeof(int) * batch_size * beam_width * max_seq_len, stream_);
@@ -599,6 +604,9 @@ void Glm<T>::decode(std::unordered_map<std::string, Tensor>* output_tensors,
     const size_t local_batch_size = getLocalBatchSize(batch_size, 1, pipeline_para_.world_size_);
     FT_CHECK(batch_size % local_batch_size == 0);
     const size_t iteration_num = batch_size / local_batch_size;
+
+    key_cache_ = (T*)output_tensors->at("key_cache").data;
+    value_cache_ = (T*)output_tensors->at("value_cache").data;
 
     for (uint ite = 0; ite < iteration_num; ++ite) {
         const int id_offset = ite * local_batch_size * beam_width;

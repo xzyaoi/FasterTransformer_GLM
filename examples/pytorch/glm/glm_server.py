@@ -99,6 +99,7 @@ glm = Glm(head_num, size_per_head, vocab_size, rotary_embedding_dim, start_id, e
 if not glm.load(ckpt_path=args.ckpt_path):
     print("[WARNING] Checkpoint file not found. Model loading is skipped.")
 
+# most of the params in init_model are not used, just make FT happy
 glm.init_model(512,# output_len,
                 1, # beam_width
                 1, # top_k,
@@ -109,38 +110,16 @@ glm.init_model(512,# output_len,
                 1., #repetition_penalty,
                 42, # random_seed
                 )
-    
-    # with torch.no_grad():
-    #     for _ in range(3):
-    #         # Generate tokens.
-    #         tokens_batch = glm(start_ids,
-    #                             start_lengths,
-    #                             mask_positions,
-    #                             return_output_length,
-    #                             return_cum_log_probs)
-    #         # # only a thread (rank 0) gets the output, while the others are supposed to return None.
-    #         if args.local_rank == 0:
-    #             print(get_res(tokens_batch))  
-# if __name__ == '__main__':
-#     main()
 
 import json
 from flask import Flask, request, jsonify, make_response
 import torch.distributed as dist
 from threading import Semaphore
-from utils.tools import Timeout
-
-# from utils.generation import BeamSearchStrategy
 
 gpu_sem = Semaphore(1)
 app = Flask('glm-130b')
 
-# @app.route('/predict')
-# def run_server():
-#     args = request.args
-#     return predict(**args)
-
-def tokenize(contexts):
+def tokenize(contexts, pad = True):
     def encode(raw_text):
         # add MASK
         generation_mask = "[MASK]" if "[MASK]" in raw_text else "[gMASK]"
@@ -164,17 +143,13 @@ def tokenize(contexts):
         if not raw_text.endswith('MASK]'):
             seq = seq + [tokenizer.get_command('eos')]
         seq = seq + [tokenizer.get_command('sop')]
-        # if args.local_rank == 0:
-        #     print('raw text: {}\n'.format(raw_text))
-        #     print(seq)
-        # if len(seq) > args.max_seq_len:
-        #     raise ValueError('text too long.')
         return torch.IntTensor(seq), -1 if use_gmask else seq.index(tokenizer.get_command(generation_mask))
 
     def get_ids(contexts):
         start_ids, mask_positions = zip(*[encode(c) for c in contexts])
         start_lengths = torch.IntTensor([len(ids) for ids in start_ids])
-        start_ids = pad_sequence(start_ids, batch_first=True, padding_value=0)
+        if pad:
+            start_ids = pad_sequence(start_ids, batch_first=True, padding_value=0)
         return start_ids, start_lengths, torch.IntTensor(mask_positions)
     
     return get_ids(contexts)
@@ -207,69 +182,57 @@ def get_generate():
 
     if config.get("num_beams"):
         beam_width = config.get("num_beams")
-        new_contexts = []
-        for c in contexts:
-            for _ in range(beam_width):
-                new_contexts.append(c)
-        contexts = new_contexts
+    else:
+        beam_width = 1
+
+    start_ids, _, _ = tokenize(contexts, pad = False)
+
+    context_idx = sorted(range(len(contexts)), key=lambda k: len(start_ids[k]), reverse=True)
+
+    new_contexts = []
+    for i in range(len(contexts)):
+        for _ in range(beam_width):
+            new_contexts.append(contexts[context_idx[i]])
+    contexts = new_contexts
 
     start_ids, start_lengths, mask_positions = tokenize(contexts)
 
     args = {}
     for i in ["seed", "out_seq_length", "min_gen_length", "sampling_strategy", "num_beams", "length_penalty", "no_repeat_ngram_size", "temperature", "topk", "topp"]:
-        if config.get(i):
+        if config.get(i) != None:
             args[i] = config.get(i)
 
     with gpu_sem:
         res = predict(start_ids, start_lengths, mask_positions, **args)
 
+    res_new = [None] * len(res)
+    for i in range(len(res)):
+        res_new[context_idx[i]] = res[i]
+    res = res_new
+
     return make_response(jsonify({"text": res}),200)
 
 if __name__ == "__main__":
 
-#     end_tokens = [tokenizer.get_command("eop"), tokenizer.get_command("eos")]
-        
     def get_res(tokens_batch, start_lengths):
         res = []
-        try:
-            beam_width = tokens_batch.shape[1]
-            if tokens_batch is not None:
-                tokens_batch = tokens_batch.cpu().numpy()
-                for i, tokens in enumerate(tokens_batch):
-                    for beam_id in range(beam_width):
-                        token = list(tokens[beam_id][start_lengths[0]:]) # exclude context input from the output
+        if tokens_batch is not None:
+            for i, tokens in enumerate(tokens_batch):
+                res.append([])
+                try:
+                    for beam_id in range(len(tokens)):
+                        token = tokens[beam_id].tolist()
+                        token = token[start_lengths[0]:] # exclude context input from the output
                         if 20002 in token:
                             token = token[:token.index(20002)]
                         if 150005 in token:
                             token = token[:token.index(150005)]
-                        res.append(tokenizer.detokenize(token))
-        except:
-            pass
+                        res[-1].append(tokenizer.detokenize(token))
+                except:
+                    pass
         return res
 
-    # def predict(start_ids, start_lengths, mask_positions, return_output_length):
-
-    #     tokens_batch = glm(start_ids,
-    #                         start_lengths,
-    #                         mask_positions,
-    #                         return_output_length,
-    #                         0, # return_cum_log_probs
-    #                         )
-
-        # global strategy
-
-#         if args.with_id:
-#             query_id, raw_text = raw_text.split("\t")
-
-#         answers, answers_with_style, blanks = fill_blanks(raw_text, model, tokenizer, strategy)
-
-        # res = get_res(tokens_batch)
-        # if torch.distributed.get_rank() == 0:
-        #     print(res)
-
-        # return res
-
-    def predict(start_ids, start_lengths, mask_positions, seed=1234, out_seq_length=200, min_gen_length=20, sampling_strategy='BaseStrategy', 
+    def predict(start_ids, start_lengths, mask_positions, seed=42, out_seq_length=64, min_gen_length=0, sampling_strategy='BaseStrategy', 
     num_beams=1, length_penalty=0.9, no_repeat_ngram_size=3, 
     temperature=1, topk=5, topp=0):
 
@@ -299,7 +262,7 @@ if __name__ == "__main__":
         else:
             return [f"unknown strategy {sampling_strategy}"]
 
-        
+        # with the same seed, no need to synchronize random numbers between processes
         torch.manual_seed(seed)
 
         tokens_batch = glm(start_ids,
@@ -308,41 +271,14 @@ if __name__ == "__main__":
                         out_seq_length,
                         num_beams,
                         strategy)
+
         res = get_res(tokens_batch, start_lengths)
         if torch.distributed.get_rank() == 0:
+            print(tokens_batch)
             print(res)
         return res
 
-        # return res
-#         args.seed = seed
-#         args.out_seq_length = out_seq_length
-#         args.min_gen_length = min_gen_length
-#         args.sampling_strategy = sampling_strategy
-#         args.num_beams = num_beams
-#         args.length_penalty = length_penalty
-#         args.no_repeat_ngram_size = no_repeat_ngram_size
-#         args.temperature = temperature
-#         args.top_k = topk
-#         args.top_p = topp
-
-#         if args.sampling_strategy == "BaseStrategy":
-#             strategy = BaseStrategy(temperature=args.temperature, top_k=args.top_k, top_p=args.top_p, end_tokens=end_tokens)
-#         elif args.sampling_strategy == "BeamSearchStrategy":
-#             strategy = BeamSearchStrategy(
-#                 args.num_beams,
-#                 length_penalty=args.length_penalty,
-#                 consider_end=True,
-#                 end_tokens=end_tokens,
-#                 no_repeat_ngram_size=args.no_repeat_ngram_size,
-#                 min_gen_length=args.min_gen_length,
-#             )
-#         else:
-#             raise ValueError(f"unknown strategy {args.sampling_strategy}")
-
-#         return generate_continually(process, text)
-
-#     # from https://github.com/hanyullai/GLM-130B/commit/a0ad56b76650eee679123fcc26bb92d2b3b49cb2
-
+    # from https://github.com/hanyullai/GLM-130B/commit/a0ad56b76650eee679123fcc26bb92d2b3b49cb2
     if torch.distributed.get_rank() == 0:
         app.run(host="0.0.0.0")
     else:

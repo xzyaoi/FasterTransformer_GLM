@@ -101,6 +101,7 @@ class GlmWeights(object):
         self.w = []
         self.weight = []
         self.scale = []
+
         # Transformer blocks
         self.w.extend([torch.zeros(3 * local_hidden_units, dtype = torch.float16)] * layer_num)                                   # attention.query_key_value.bias
         self.w.extend([torch.zeros(global_hidden_units, dtype = torch.float16)] * layer_num)                                   # attention.dense.bias
@@ -167,7 +168,6 @@ class GlmWeights(object):
 
         module = torch.load(checkpoint_name, map_location='cpu')['module']
 
-        # Load
         num_attention_heads = 96
         tensor_model_parallel_size = self.tensor_para_size
         layer_num = self.layer_num
@@ -175,7 +175,6 @@ class GlmWeights(object):
         w = []
         weight = []
         scale = []
-        # Load
 
         num_splits = 3
 
@@ -305,7 +304,6 @@ class Glm(nn.Module):
                                   max_seq_len, tensor_para_size, pipeline_para_size, dtype)
 
         # Prepare for tensor/pipeline parallel
-        
         self.rank = rank
         self.device_count = torch.cuda.device_count()
         self.device = self.rank % self.device_count
@@ -319,21 +317,17 @@ class Glm(nn.Module):
     def load(self, ckpt_path):
         is_load = self.weights.load(ckpt_path, tensor_para_rank=self.tensor_para_rank,
                                     pipeline_para_rank=self.pipeline_para_rank)
-        # self.cuda()
         return is_load
 
     def half(self):
         self.weights._map(lambda w: w.half())
-        # self.cuda()
 
     def bfloat16(self):
         self.weights._map(lambda w: w.bfloat16())
-        # self.cuda()
 
     def sparse(self):
         if not self.use_sparse_gemm:
             self.use_sparse_gemm = True
-            # self.cuda()
 
     def cuda(self):
         self.weights._map(lambda w: w.cuda(self.device))
@@ -383,7 +377,9 @@ class Glm(nn.Module):
         start_ids = start_ids.cuda(self.device)
         start_lengths = start_lengths.cuda(self.device)
         mask_positions = mask_positions.cuda(self.device)
+        
         # outputs: output_ids, output_lengths, output_cum_log_probs (optional)
+        # model.forward is a deprecated interface where FT completes the entire inference process.
 
         # outputs = self.model.forward(start_ids,
         #                              start_lengths,
@@ -394,13 +390,30 @@ class Glm(nn.Module):
         # return output_ids
 
         batch_size = start_ids.shape[0]
+        max_len = input_len + output_len
         
-        output_ids = torch.zeros([input_len + output_len,batch_size,1],dtype=torch.int32).cuda()
-        output_ids_buf = torch.zeros([input_len + output_len,batch_size,1],dtype=torch.int32).cuda()
-        logits_buf = torch.zeros([batch_size,1,self.vocab_size],dtype=torch.float32).cuda()
-        parent_ids = torch.zeros([input_len + output_len,batch_size,1],dtype=torch.int32).cuda()
-        sequence_lengths = torch.zeros([batch_size,1],dtype=torch.int32).cuda()
-        cum_log_probs = torch.zeros([batch_size,1],dtype=torch.float32).cuda()
+        output_ids = torch.zeros([max_len,batch_size,1],dtype=torch.int32, device="cuda")
+        output_ids_buf = torch.zeros([max_len,batch_size,1],dtype=torch.int32, device="cuda")
+        logits_buf = torch.zeros([batch_size,1,self.vocab_size],dtype=torch.float32, device="cuda")
+        parent_ids = torch.zeros([max_len,batch_size,1],dtype=torch.int32, device="cuda")
+        sequence_lengths = torch.zeros([batch_size,1],dtype=torch.int32, device="cuda")
+        cum_log_probs = torch.zeros([batch_size,1],dtype=torch.float32, device="cuda")
+
+        k_cache_shape = [self.layer_num,
+                                batch_size // beam_width,
+                                beam_width,
+                                self.head_num // self.tensor_para_size,
+                                self.size_per_head // 8,
+                                max_len,
+                                8] # 16 / sizeof(fp16)
+        v_cache_shape = [self.layer_num,
+                                batch_size // beam_width,
+                                beam_width,
+                                self.head_num // self.tensor_para_size,
+                                max_len,
+                                self.size_per_head]
+        key_cache = torch.zeros(k_cache_shape,dtype=torch.float16, device="cuda")
+        value_cache = torch.zeros(v_cache_shape,dtype=torch.float16, device="cuda")
         
         self.model.encode(start_ids,
                             start_lengths,
@@ -411,31 +424,22 @@ class Glm(nn.Module):
                             parent_ids,
                             sequence_lengths,
                             cum_log_probs,
+                            key_cache,
+                            value_cache,
                             0)
         
         tokens = start_ids.reshape(batch_size // beam_width, beam_width, -1)
-        for i in range(input_len,input_len+output_len):
-            self.model.decode(i)
+        for i in range(input_len, max_len):
+            self.model.decode(key_cache.contiguous(), value_cache.contiguous(), i)
             logits = logits_buf.reshape(batch_size // beam_width, beam_width, -1)
-            tokens = strategy.forward(logits, tokens)
+            tokens, key_cache, value_cache = strategy.forward(logits, tokens, key_cache, value_cache)
             for j in range(batch_size):
-                # logits = logits_buf[j][0]
-                # logits = logits / temperature
-                # if top_k >= 1:
-                #     values, indices = torch.topk(logits, top_k)
-                #     values = values.cpu()
-                #     probs = torch.nn.functional.softmax(values, dim=-1)
-                #     pred = [indices[torch.multinomial(probs, num_samples=1)[0]]]
-                #     # pred = [logits.argmax()]
-                # else:
-                #     logits = top_k_logits(logits, top_k, top_p)
-                #     probs = torch.nn.functional.softmax(logits.float(), dim=-1)
-                #     pred = torch.multinomial(probs, num_samples=1)
                 output_ids_buf[i][j][0] += tokens[j // beam_width][j % beam_width][-1]
                 sequence_lengths[j][0] += 1
+            if strategy.is_done:
+                break
 
-        return strategy.finalize(tokens)        
-        # return output_ids_buf.permute(1,2,0)
+        return strategy.finalize(tokens)
 
     def set_input_tensor(self, input_tensor):
         """Set input tensor to be used instead of forward()'s input.

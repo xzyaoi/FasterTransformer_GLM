@@ -7,7 +7,7 @@ if [ x"${MPSIZE}" == "x" ]; then
     MPSIZE=$(expr $MPSIZE + 1)
 fi
 
-MAXSEQLEN=10000
+MAXSEQLEN=3000
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 
 script_path=$(realpath $0)

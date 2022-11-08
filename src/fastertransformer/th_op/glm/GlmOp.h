@@ -79,6 +79,8 @@ public:
                          th::Tensor& parent_ids,
                          th::Tensor& sequence_lengths,
                          th::Tensor& cum_log_probs,
+                         th::Tensor& key_cache,
+                         th::Tensor& value_cache,
                          const int return_cum_log_probs = 0) = 0;
     virtual void encode(th::Tensor& input_ids,
                         th::Tensor& input_lengths,
@@ -89,8 +91,12 @@ public:
                         th::Tensor& parent_ids,
                         th::Tensor& sequence_lengths,
                         th::Tensor& cum_log_probs,
+                        th::Tensor& key_cache,
+                        th::Tensor& value_cache,
                         const int return_cum_log_probs = 0) = 0;
-    virtual void decode(const size_t step) = 0;
+    virtual void decode(th::Tensor& key_cache,
+                        th::Tensor& value_cache,
+                        const size_t step) = 0;
 };
 
 template<typename T>
@@ -325,6 +331,8 @@ public:
                  th::Tensor& parent_ids,
                  th::Tensor& sequence_lengths,
                  th::Tensor& cum_log_probs,
+                 th::Tensor& key_cache,
+                 th::Tensor& value_cache,
                  const int return_cum_log_probs = 0) override
     {
         const size_t request_batch_size = (size_t)input_ids.size(0);
@@ -395,6 +403,16 @@ public:
                         ft::TYPE_FP32,
                         std::vector<size_t>{request_batch_size, beam_width, vocab_size_},
                         get_ptr<float>(logits_buf)}},
+            {"key_cache",
+             ft::Tensor{ft::MEMORY_GPU,
+                        ft::TYPE_FP16,
+                        std::vector<size_t>{1},
+                        get_ptr<half>(key_cache)}},
+            {"value_cache",
+             ft::Tensor{ft::MEMORY_GPU,
+                        ft::TYPE_FP16,
+                        std::vector<size_t>{1},
+                        get_ptr<half>(value_cache)}},
             {"parent_ids",
              ft::Tensor{ft::MEMORY_GPU,
                         ft::TYPE_INT32,
@@ -436,6 +454,8 @@ public:
                  th::Tensor& parent_ids,
                  th::Tensor& sequence_lengths,
                  th::Tensor& cum_log_probs,
+                 th::Tensor& key_cache,
+                 th::Tensor& value_cache,
                  const int return_cum_log_probs = 0) override
     {
         const size_t request_batch_size = (size_t)input_ids.size(0);
@@ -508,6 +528,16 @@ public:
                         ft::TYPE_FP32,
                         std::vector<size_t>{request_batch_size, beam_width, vocab_size_},
                         get_ptr<float>(logits_buf)}},
+            {"key_cache",
+             ft::Tensor{ft::MEMORY_GPU,
+                        ft::TYPE_FP16,
+                        std::vector<size_t>{1},
+                        get_ptr<half>(key_cache)}},
+            {"value_cache",
+             ft::Tensor{ft::MEMORY_GPU,
+                        ft::TYPE_FP16,
+                        std::vector<size_t>{1},
+                        get_ptr<half>(value_cache)}},
             {"parent_ids",
              ft::Tensor{ft::MEMORY_GPU,
                         ft::TYPE_INT32,
@@ -541,8 +571,21 @@ public:
 
     }
 
-    void decode(const size_t step) override
+    void decode(th::Tensor& key_cache,
+                th::Tensor& value_cache,
+                const size_t step) override
     {
+        output_tensors.erase("key_cache");
+        output_tensors.erase("value_cache");
+        
+        output_tensors.insert({"key_cache", ft::Tensor{ft::MEMORY_GPU,
+                                                    ft::TYPE_FP16,
+                                                    std::vector<size_t>{1},
+                                                    get_ptr<half>(key_cache)}});
+        output_tensors.insert({"value_cache", ft::Tensor{ft::MEMORY_GPU,
+                                                    ft::TYPE_FP16,
+                                                    std::vector<size_t>{1},
+                                                    get_ptr<half>(value_cache)}});
         try {
             glm->decode(&output_tensors, &input_tensors, &glm_weights_, step, false);
         }
@@ -650,9 +693,11 @@ public:
                     const int64_t random_seed);
     
     vector<th::Tensor> forward(th::Tensor input_ids,
-                               th::Tensor input_lengths,
-                               th::Tensor mask_positions,
-                               const int64_t return_cum_log_probs);
+                                th::Tensor input_lengths,
+                                th::Tensor mask_positions,
+                                th::Tensor key_cache,
+                                th::Tensor value_cache,
+                                const int64_t return_cum_log_probs);
     
     std::vector<th::Tensor> encode(th::Tensor input_ids,
                                     th::Tensor input_lengths,
@@ -663,9 +708,13 @@ public:
                                     th::Tensor parent_ids,
                                     th::Tensor sequence_lengths,
                                     th::Tensor cum_log_probs,
+                                    th::Tensor key_cache,
+                                    th::Tensor value_cache,
                                     const int64_t return_cum_log_probs);
     
-    std::vector<th::Tensor> decode(const int64_t step);
+    std::vector<th::Tensor> decode(th::Tensor key_cache,
+                                    th::Tensor value_cache,
+                                    const int64_t step);
 
 private:
     const at::ScalarType st_;
