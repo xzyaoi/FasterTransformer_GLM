@@ -11,7 +11,7 @@ import os
 import re
 import sys
 import argparse
-import timeit
+import datetime
 import torch
 
 torch.manual_seed(42)
@@ -79,7 +79,9 @@ max_seq_len = args.max_seq_len
 if args.world_size > 1:
     torch.distributed.init_process_group(
         backend="nccl",
-        world_size=args.world_size, rank=args.local_rank)
+        world_size=args.world_size,
+        rank=args.local_rank,
+        timeout=datetime.timedelta(days=30))
     rank = torch.distributed.get_rank()
     world_size = torch.distributed.get_world_size()
 else:
