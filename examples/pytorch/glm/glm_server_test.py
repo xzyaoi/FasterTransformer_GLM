@@ -11,7 +11,7 @@ texts = [
         "I have a dream that ",
     ]
 
-def test(texts, strategy = "BaseStrategy", stop = []):
+def test(texts, strategy = "BaseStrategy", stop = [], regix = ""):
 
     # If TOPK/TOPP are 0 it defaults to greedy sampling, top-k will also override top-p
     data = {
@@ -25,7 +25,8 @@ def test(texts, strategy = "BaseStrategy", stop = []):
         "sampling_strategy": strategy,
         "num_beams": 4,
         "length_penalty": 0.9,
-        "no_repeat_ngram_size": 3
+        "no_repeat_ngram_size": 3,
+        "regix": regix
     }
 
     t = time.time()
@@ -49,10 +50,10 @@ def test(texts, strategy = "BaseStrategy", stop = []):
 
 test(texts[:1])
 test(texts[:2])
-test(texts[2:4])
+test(texts[2], regix=".*我:.*")
 test(texts)
 
 test(texts[:1], strategy = "BeamSearchStrategy")
 test(texts[:2], strategy = "BeamSearchStrategy")
-test(texts[2:4], strategy = "BeamSearchStrategy")
+test(texts[2], strategy = "BeamSearchStrategy", regix=".*我:.*")
 test(texts, strategy = "BeamSearchStrategy")

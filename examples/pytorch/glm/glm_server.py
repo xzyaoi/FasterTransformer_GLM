@@ -204,7 +204,7 @@ def get_generate():
     start_ids, start_lengths, mask_positions = tokenize(contexts)
 
     args = {}
-    for i in ["seed", "max_tokens", "min_tokens", "sampling_strategy", "num_beams", "length_penalty", "no_repeat_ngram_size", "temperature", "top_k", "top_p"]:
+    for i in ["seed", "max_tokens", "min_tokens", "sampling_strategy", "num_beams", "length_penalty", "no_repeat_ngram_size", "temperature", "top_k", "top_p", "regix"]:
         if config.get(i) != None:
             args[i] = config.get(i)
 
@@ -240,7 +240,7 @@ if __name__ == "__main__":
 
     def predict(start_ids, start_lengths, mask_positions, seed=42, max_tokens=64, min_tokens=0, sampling_strategy='BaseStrategy', 
     num_beams=1, length_penalty=0.9, no_repeat_ngram_size=3, 
-    temperature=1, top_k=5, top_p=0):
+    temperature=1, top_k=5, top_p=0, regix=None):
 
         if start_ids.size(1) + max_tokens > max_seq_len:
             return ["length too long"]
@@ -249,6 +249,13 @@ if __name__ == "__main__":
             print('info', [start_ids, start_lengths, mask_positions, seed, max_tokens, min_tokens, sampling_strategy, num_beams, length_penalty, no_repeat_ngram_size, temperature, top_k, top_p])
             dist.broadcast_object_list([start_ids, start_lengths, mask_positions, seed, max_tokens, min_tokens, sampling_strategy, num_beams, length_penalty, no_repeat_ngram_size, temperature, top_k, top_p], src=0)
 
+        
+        try:
+            if regix != None:
+                regix = re.compile(regix)
+        except:
+            regix = None
+            
         end_tokens = [tokenizer.get_command("eop"), tokenizer.get_command("eos")]
         batch_size = start_ids.shape[0]
 
@@ -276,7 +283,8 @@ if __name__ == "__main__":
                         mask_positions,
                         max_tokens,
                         num_beams,
-                        strategy)
+                        strategy,
+                        regix)
 
         res = get_res(tokens_batch, start_lengths)
         if torch.distributed.get_rank() == 0:

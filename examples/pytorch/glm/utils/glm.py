@@ -15,6 +15,7 @@
 from __future__ import print_function
 
 import os
+import re
 import sys
 import torch
 import torch.nn as nn
@@ -368,7 +369,8 @@ class Glm(nn.Module):
                 mask_positions,
                 output_len,
                 beam_width,
-                strategy):
+                strategy,
+                regix=None):
 
         input_len = start_ids.size(1)
         assert input_len > 0, "input len must be larger than zero. For an unconditional case, use start_id as the first token."
@@ -427,15 +429,23 @@ class Glm(nn.Module):
                             key_cache,
                             value_cache,
                             0)
-        
+
+        history = [[]] * start_ids.shape[0]
+
         tokens = start_ids.reshape(batch_size // beam_width, beam_width, -1)
         for i in range(input_len, max_len):
             self.model.decode(key_cache.contiguous(), value_cache.contiguous(), i)
             logits = logits_buf.reshape(batch_size // beam_width, beam_width, -1)
             tokens, key_cache, value_cache = strategy.forward(logits, tokens, key_cache, value_cache)
             for j in range(batch_size):
-                output_ids_buf[i][j][0] += tokens[j // beam_width][j % beam_width][-1]
+                pred = tokens[j // beam_width][j % beam_width][-1]
+                output_ids_buf[i][j][0] += pred
                 sequence_lengths[j][0] += 1
+                if regix:
+                    history[j].append(int(pred.cpu().detach()))
+                    detokenized = self.tokenizer.detokenize(history[j])
+                    if regix.match(detokenized):
+                        strategy._is_done[j] = True
             if strategy.is_done:
                 break
 

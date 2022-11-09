@@ -83,16 +83,19 @@ class _IceTokenizer(AbstractTokenizer):
         return self.tokenizer.encode(text)
 
     def detokenize(self, token_ids):
-        split = [-1]
-        for i, token in enumerate(token_ids):
-            if token in self.special_tokens_decoder:
-                split.append(i)
-        split.append(len(token_ids))
-        text = ""
-        for i in range(len(split) - 1):
-            if i > 0:
-                text += self.IdToToken(token_ids[split[i]])
-            text += self.tokenizer.decode(token_ids[split[i] + 1: split[i + 1]])
+        try:
+            split = [-1]
+            for i, token in enumerate(token_ids):
+                if token in self.special_tokens_decoder:
+                    split.append(i)
+            split.append(len(token_ids))
+            text = ""
+            for i in range(len(split) - 1):
+                if i > 0:
+                    text += self.IdToToken(token_ids[split[i]])
+                text += self.tokenizer.decode(token_ids[split[i] + 1: split[i + 1]])
+        except:
+            text = ''
         return text
 
     @property
