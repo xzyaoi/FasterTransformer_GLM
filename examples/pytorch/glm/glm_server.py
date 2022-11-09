@@ -246,12 +246,11 @@ if __name__ == "__main__":
             return ["length too long"]
 
         if torch.distributed.get_rank() == 0:
-            print('info', [start_ids, start_lengths, mask_positions, seed, max_tokens, min_tokens, sampling_strategy, num_beams, length_penalty, no_repeat_ngram_size, temperature, top_k, top_p])
-            dist.broadcast_object_list([start_ids, start_lengths, mask_positions, seed, max_tokens, min_tokens, sampling_strategy, num_beams, length_penalty, no_repeat_ngram_size, temperature, top_k, top_p], src=0)
+            print('info', [start_ids, start_lengths, mask_positions, seed, max_tokens, min_tokens, sampling_strategy, num_beams, length_penalty, no_repeat_ngram_size, temperature, top_k, top_p, regix])
+            dist.broadcast_object_list([start_ids, start_lengths, mask_positions, seed, max_tokens, min_tokens, sampling_strategy, num_beams, length_penalty, no_repeat_ngram_size, temperature, top_k, top_p, regix], src=0)
 
-        
         try:
-            if regix != None:
+            if regix:
                 regix = re.compile(regix)
         except:
             regix = None
@@ -297,11 +296,11 @@ if __name__ == "__main__":
         app.run(host="0.0.0.0")
     else:
         while True:
-            info = [None, None, None, None, None, None, None, None, None, None, None, None, None]
+            info = [None, None, None, None, None, None, None, None, None, None, None, None, None, None]
             dist.broadcast_object_list(info, src=0)
 
-            start_ids, start_lengths, mask_positions, seed, max_tokens, min_tokens, sampling_strategy, num_beams, length_penalty, no_repeat_ngram_size, temperature, top_k, top_p = info
+            start_ids, start_lengths, mask_positions, seed, max_tokens, min_tokens, sampling_strategy, num_beams, length_penalty, no_repeat_ngram_size, temperature, top_k, top_p, regix = info
 
             predict(start_ids, start_lengths, mask_positions, seed, max_tokens, min_tokens, sampling_strategy, 
                 num_beams, length_penalty, no_repeat_ngram_size, 
-                temperature, top_k, top_p)
+                temperature, top_k, top_p, regix)
