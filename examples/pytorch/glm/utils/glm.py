@@ -445,7 +445,7 @@ class Glm(nn.Module):
                     history[j].append(int(pred.cpu().detach()))
                     detokenized = self.tokenizer.detokenize(history[j])
                     if regix.match(detokenized):
-                        strategy._is_done[j] = True
+                        strategy._is_done[j // beam_width] = True
             if strategy.is_done:
                 break
 
