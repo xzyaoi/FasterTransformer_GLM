@@ -480,7 +480,19 @@ template void invokeBuildDecoderAttentionMask(__nv_bfloat16* attention_mask,
                                               cudaStream_t stream);
 #endif
 
-// The attention_mask only will be used in encode part, so just ignore the case when row_id >= length.
+// max_seq_len equals to max(sequence_lengths) = sequence_lengths[0], with an additional <sop> token, so col_id >= length - 1 should be masked to 0.
+// consider max_seq_len = 8, length = 4, the mask matrix should be
+// 1 1 1 0 0 0 0 0
+// 1 1 1 0 0 0 0 0
+// 1 1 1 0 0 0 0 0
+// 1 1 1 1 0 0 0 0
+// 0 0 0 0 0 0 0 0
+// 0 0 0 0 0 0 0 0
+// 0 0 0 0 0 0 0 0
+// 0 0 0 0 0 0 0 0
+// and next lines should be ( calculated within MultiHeadAttention )
+// 1 1 1 1 0 0 0 0 1
+// 1 1 1 1 0 0 0 0 1 1
 template<typename T>
 __global__ void buildGlmDecoderAttentionMaskKernel(T* attention_mask, const int* sequence_lengths, const int max_seq_len)
 {
@@ -488,11 +500,13 @@ __global__ void buildGlmDecoderAttentionMaskKernel(T* attention_mask, const int*
     // attention_mask: [batch_size, 1, max_seq_len, max_seq_len]
     attention_mask += blockIdx.x * max_seq_len * max_seq_len;
     const int length = sequence_lengths[blockIdx.x];
-    const int max_length = sequence_lengths[0];
     for (int i = threadIdx.x; i < max_seq_len * max_seq_len; i += blockDim.x) {
         int row_id = i / max_seq_len;
         int col_id = i % max_seq_len;
-        if (row_id < max_length && col_id < length) {
+        if (row_id < length - 1 && col_id < length - 1) {
+            attention_mask[i] = (T)(1.0f);
+        }
+        else if(row_id == length - 1 && col_id <= length - 1) {
             attention_mask[i] = (T)(1.0f);
         }
         else {
