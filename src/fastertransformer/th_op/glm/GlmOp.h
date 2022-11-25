@@ -26,6 +26,12 @@ namespace ft = fastertransformer;
 namespace th = torch;
 namespace torch_ext {
 
+class HackNCCLOp {
+public:
+    operator bool() { return true; }
+    operator c10d::OpType() { return c10d::OpType::SEND; }
+};
+
 // if want to use nccl_name, maybe only support pytorch >= 1.12
 class HackNCCLGroup: public c10d::ProcessGroupNCCL {
 public:
@@ -35,15 +41,9 @@ public:
             ncclGetUniqueId(&ncclID);
         }
 #if defined(TORCH_VERSION_MAJOR) && (TORCH_VERSION_MAJOR > 1 || \
-        (TORCH_VERSION_MAJOR == 1 && TORCH_VERSION_MINOR >= 12))
-        broadcastUniqueNCCLID(&ncclID,
-                true,
-                nccl_name,
-                rank);
-#elif defined(TORCH_VERSION_MAJOR) && (TORCH_VERSION_MAJOR > 1 || \
         (TORCH_VERSION_MAJOR == 1 && TORCH_VERSION_MINOR >= 8))
         broadcastUniqueNCCLID(&ncclID,
-                c10d::OpType::SEND,
+                HackNCCLOp(),
                 nccl_name,
                 rank);
 #else
