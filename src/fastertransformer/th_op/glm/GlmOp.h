@@ -564,6 +564,11 @@ public:
             std::cout << error.what() << std::endl;
             ft::FT_CHECK(false);
         }
+        catch (const std::exception &exc)
+        {
+            // catch anything thrown within try block that derives from std::exception
+            std::cerr << exc.what();
+        }
         catch (...) {
             std::cout << "Runtime error" << std::endl;
             ft::FT_CHECK(false);

@@ -11,5 +11,3 @@ RUN conda install -y pybind11
 RUN pip3 install icetk transformers
 
 RUN bash /FasterTransformer/docker/install.sh
-CMD ["bash", "/FasterTransformer/docker/start.sh"]
-EXPOSE 5000
